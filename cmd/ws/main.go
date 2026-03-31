@@ -14,7 +14,15 @@ var version = "dev"
 func main() {
 	args := os.Args[1:]
 	cmd := "help"
-	if len(args) > 0 {
+
+	// Handle "ws -- [filter] <command...>" before normal dispatch.
+	// Everything after -- is treated as a literal command to run across repos,
+	// bypassing built-in command names. Use this when a command name conflicts
+	// with a ws builtin (e.g. "ws -- fetch something").
+	if len(args) > 0 && args[0] == "--" {
+		cmd = "--"
+		args = args[1:]
+	} else if len(args) > 0 {
 		cmd = args[0]
 		args = args[1:]
 	}
@@ -82,19 +90,6 @@ func main() {
 			fatal(err)
 		}
 
-	case "super":
-		filter, cmdArgs := command.ParseSuperArgs(m, args)
-		if filter == "" {
-			filter = ctx
-		}
-		if len(cmdArgs) == 0 {
-			fmt.Fprintln(os.Stderr, "Usage: ws super [filter] <command...>")
-			os.Exit(1)
-		}
-		if err := command.Super(m, parentDir, filter, cmdArgs); err != nil {
-			fatal(err)
-		}
-
 	case "fetch":
 		filter := filterArg(args, ctx)
 		if err := command.Super(m, parentDir, filter, []string{"git", "fetch"}); err != nil {
@@ -107,10 +102,22 @@ func main() {
 			fatal(err)
 		}
 
+	case "--":
+		// Explicit escape: "ws -- [filter] <command...>"
+		filter, cmdArgs := command.ParseSuperArgs(m, args)
+		if filter == "" {
+			filter = ctx
+		}
+		if len(cmdArgs) == 0 {
+			fmt.Fprintln(os.Stderr, "Usage: ws -- [filter] <command...>")
+			os.Exit(1)
+		}
+		if err := command.Super(m, parentDir, filter, cmdArgs); err != nil {
+			fatal(err)
+		}
+
 	default:
-		// Unknown command: treat as passthrough to super
-		// e.g. "ws git status" -> super(all, ["git", "status"])
-		// e.g. "ws ai git status" -> super("ai", ["git", "status"])
+		// Passthrough: treat as command to run across repos
 		allArgs := append([]string{cmd}, args...)
 		filter, cmdArgs := command.ParseSuperArgs(m, allArgs)
 		if filter == "" {
@@ -184,8 +191,11 @@ Commands:
 
 Any unrecognized command is run across repos:
   ws git status          Run "git status" in all repos
-  ws ai git log -1       Run "git log -1" in AI repos
-  ws ls -la              Run any command, not just git
+  ws ai git log -1       Run "git log -1" in a group
+  ws ls -la              Any command, not just git
+
+Use -- to escape built-in names:
+  ws -- fetch data.json  Run "fetch data.json" (not git fetch)
 
 Filters:
   all                    All repos in any group (default)
