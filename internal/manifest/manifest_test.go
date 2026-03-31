@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -255,6 +256,49 @@ repos:
 	m, err := Parse([]byte(yaml))
 	require.NoError(t, err)
 	assert.Equal(t, "master", m.DefaultBranch) // default when not specified
+}
+
+func TestParse_RejectsPathTraversalRepoName(t *testing.T) {
+	tests := []string{
+		"../../etc/evil",
+		"../parent",
+		"sub/dir",
+		"back\\slash",
+		"..",
+		".",
+		"",
+	}
+	for _, name := range tests {
+		t.Run(name, func(t *testing.T) {
+			yaml := fmt.Sprintf("remotes:\n  default: git@example.com\nrepos:\n  %q:\n", name)
+			_, err := Parse([]byte(yaml))
+			assert.Error(t, err, "expected error for repo name %q", name)
+		})
+	}
+}
+
+func TestValidateURL(t *testing.T) {
+	valid := []string{
+		"git@github.com:acme/repo.git",
+		"git@bitbucket.org:org/repo.git",
+		"https://github.com/acme/repo.git",
+		"ssh://git@github.com/acme/repo.git",
+		"git://example.com/repo.git",
+		"http://example.com/repo.git",
+	}
+	for _, url := range valid {
+		assert.NoError(t, ValidateURL(url), "should allow: %s", url)
+	}
+
+	invalid := []string{
+		"ext::sh -c evil",
+		"file:///etc/passwd",
+		"ftp://example.com/repo",
+		"--upload-pack=evil",
+	}
+	for _, url := range invalid {
+		assert.Error(t, ValidateURL(url), "should reject: %s", url)
+	}
 }
 
 func repoNames(repos []RepoInfo) []string {

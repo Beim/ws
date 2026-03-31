@@ -48,7 +48,12 @@ func Focus(m *manifest.Manifest, parentDir, wsHome, filter string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(wsFile, append(out, '\n'), 0644); err != nil {
+	// Atomic write: temp file + rename
+	tmp := wsFile + ".tmp"
+	if err := os.WriteFile(tmp, append(out, '\n'), 0644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, wsFile); err != nil {
 		return err
 	}
 

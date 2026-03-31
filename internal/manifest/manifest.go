@@ -44,8 +44,17 @@ type rawManifest struct {
 	Exclude []string                     `yaml:"exclude"`
 }
 
+const maxManifestSize = 1 << 20 // 1MB
+
 // Load reads and parses a manifest YAML file.
 func Load(path string) (*Manifest, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading manifest: %w", err)
+	}
+	if info.Size() > maxManifestSize {
+		return nil, fmt.Errorf("manifest too large: %d bytes (max %d)", info.Size(), maxManifestSize)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading manifest: %w", err)
@@ -85,6 +94,9 @@ func Parse(data []byte) (*Manifest, error) {
 
 	// Repos: handle nil values (bare YAML entries like "my-repo:")
 	for name, cfg := range raw.Repos {
+		if err := validateName(name); err != nil {
+			return nil, fmt.Errorf("repo %q: %w", name, err)
+		}
 		rc := RepoConfig{}
 		if cfg != nil {
 			rc.Branch = cfg["branch"]
@@ -95,6 +107,23 @@ func Parse(data []byte) (*Manifest, error) {
 	}
 
 	return m, nil
+}
+
+// validateName ensures a name is safe to use as a directory component.
+func validateName(name string) error {
+	if name == "" || name == "." || name == ".." {
+		return fmt.Errorf("invalid name")
+	}
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("must not contain path separators")
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("must not contain '..'")
+	}
+	if filepath.Base(name) != name {
+		return fmt.Errorf("must be a simple directory name")
+	}
+	return nil
 }
 
 // LoadWithLocal loads the main manifest and merges the local override if it exists.
@@ -169,6 +198,21 @@ func (m *Manifest) ResolveURL(name string, cfg RepoConfig) string {
 		prefix = m.Remotes["default"]
 	}
 	return prefix + "/" + name + ".git"
+}
+
+// ValidateURL checks that a URL uses a safe git transport scheme.
+func ValidateURL(url string) error {
+	// Allow SSH shorthand (git@host:org/repo.git)
+	if strings.Contains(url, "@") && strings.Contains(url, ":") && !strings.Contains(url, "://") {
+		return nil
+	}
+	allowed := []string{"https://", "ssh://", "git://", "http://"}
+	for _, scheme := range allowed {
+		if strings.HasPrefix(url, scheme) {
+			return nil
+		}
+	}
+	return fmt.Errorf("disallowed URL scheme: %q (allowed: git@..., https://, ssh://, git://)", url)
 }
 
 // ResolveBranch returns the effective branch for a repo.

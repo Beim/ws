@@ -156,7 +156,7 @@ func Exec(parentDir string, repos []manifest.RepoInfo, cmdArgs []string, maxWork
 // Clone clones a single repo.
 func Clone(parentDir string, repo manifest.RepoInfo) error {
 	repoDir := filepath.Join(parentDir, repo.Name)
-	cmd := exec.Command("git", "clone", "-b", repo.Branch, "--single-branch", repo.URL, repoDir)
+	cmd := exec.Command("git", "clone", "-b", repo.Branch, "--single-branch", "--", repo.URL, repoDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

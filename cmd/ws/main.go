@@ -127,12 +127,12 @@ func findWorkspaceHome() (string, error) {
 		return "", fmt.Errorf("WS_HOME=%s but no manifest.yml found there", home)
 	}
 
-	// 2. Walk up from cwd
+	// 2. Walk up from cwd (max 10 levels to avoid picking up stray manifests)
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	for {
+	for range 10 {
 		if _, err := os.Stat(filepath.Join(dir, "manifest.yml")); err == nil {
 			return dir, nil
 		}

@@ -23,6 +23,10 @@ func Setup(m *manifest.Manifest, parentDir, filter string) error {
 		if _, err := os.Stat(repoDir); err == nil {
 			continue
 		}
+		if err := manifest.ValidateURL(repo.URL); err != nil {
+			fmt.Fprintf(os.Stderr, "  Skipping %s: %v\n", repo.Name, err)
+			continue
+		}
 		fmt.Printf("  Cloning %s (%s)...\n", repo.Name, repo.Branch)
 		if err := git.Clone(parentDir, repo); err != nil {
 			fmt.Fprintf(os.Stderr, "  FAILED: %v\n", err)
