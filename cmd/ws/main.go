@@ -54,7 +54,7 @@ func main() {
 	switch cmd {
 	case "context":
 		if len(args) > 0 {
-			if err := command.SetContext(m, wsHome, args[0]); err != nil {
+			if err := command.SetContext(m, wsHome, parentDir, args[0]); err != nil {
 				fatal(err)
 			}
 		} else {

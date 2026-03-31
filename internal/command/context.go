@@ -10,18 +10,22 @@ import (
 )
 
 const contextFile = ".ws-context"
+const reposDir = "repos"
 
-// SetContext sets the default filter for all commands.
-func SetContext(m *manifest.Manifest, wsHome, filter string) error {
+// SetContext sets the default filter, regenerates the VS Code workspace,
+// and updates the repos/ symlink directory to match.
+func SetContext(m *manifest.Manifest, wsHome, parentDir, filter string) error {
 	path := filepath.Join(wsHome, contextFile)
 
 	if filter == "" || filter == "none" || filter == "reset" {
 		os.Remove(path)
 		fmt.Println("Context cleared.")
-		return nil
+		if err := syncReposDir(m, wsHome, parentDir, ""); err != nil {
+			return err
+		}
+		return Code(m, parentDir, wsHome, "")
 	}
 
-	// Validate that the filter resolves to something
 	repos := m.ResolveFilter(filter)
 	if len(repos) == 0 {
 		return fmt.Errorf("filter %q matched no repos", filter)
@@ -31,7 +35,11 @@ func SetContext(m *manifest.Manifest, wsHome, filter string) error {
 		return err
 	}
 	fmt.Printf("Context set to %q (%d repos)\n", filter, len(repos))
-	return nil
+
+	if err := syncReposDir(m, wsHome, parentDir, filter); err != nil {
+		return err
+	}
+	return Code(m, parentDir, wsHome, filter)
 }
 
 // GetContext reads the current context filter, or "" if none is set.
@@ -52,4 +60,44 @@ func ShowContext(m *manifest.Manifest, wsHome string) {
 	}
 	repos := m.ResolveFilter(ctx)
 	fmt.Printf("Context: %s (%d repos)\n", ctx, len(repos))
+}
+
+// syncReposDir creates/updates a repos/ directory with symlinks to the scoped repos.
+// This constrains what filesystem-based agents (CLI tools, Claude Code) can see.
+func syncReposDir(m *manifest.Manifest, wsHome, parentDir, filter string) error {
+	repos := m.ResolveFilter(filter)
+	dir := filepath.Join(wsHome, reposDir)
+
+	// Remove existing symlinks (but not non-symlink entries, for safety)
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			p := filepath.Join(dir, e.Name())
+			if e.Type()&os.ModeSymlink != 0 {
+				os.Remove(p)
+			}
+		}
+	}
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("creating repos dir: %w", err)
+	}
+
+	// Create symlinks for scoped repos
+	for _, repo := range repos {
+		target := filepath.Join(parentDir, repo.Name)
+		link := filepath.Join(dir, repo.Name)
+
+		// Use relative path for the symlink
+		relTarget, err := filepath.Rel(dir, target)
+		if err != nil {
+			relTarget = target
+		}
+
+		if err := os.Symlink(relTarget, link); err != nil && !os.IsExist(err) {
+			fmt.Fprintf(os.Stderr, "Warning: could not symlink %s: %v\n", repo.Name, err)
+		}
+	}
+
+	fmt.Printf("repos/ updated (%d symlinks)\n", len(repos))
+	return nil
 }
