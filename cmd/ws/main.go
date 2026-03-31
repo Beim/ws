@@ -27,6 +27,10 @@ func main() {
 		args = args[1:]
 	}
 
+	if cmd == "init" {
+		printShellInit()
+		return
+	}
 	if cmd == "help" || cmd == "--help" || cmd == "-h" {
 		usage()
 		return
@@ -59,6 +63,17 @@ func main() {
 			}
 		} else {
 			command.ShowContext(m, wsHome)
+		}
+
+	case "cd":
+		if len(args) == 0 {
+			fmt.Println(wsHome)
+		} else {
+			name := args[0]
+			if _, ok := m.ActiveRepos()[name]; !ok {
+				fatal(fmt.Errorf("unknown repo: %s", name))
+			}
+			fmt.Println(filepath.Join(parentDir, name))
 		}
 
 	case "setup":
@@ -182,6 +197,7 @@ func usage() {
 
 Commands:
   ll [filter]            Dashboard: branch, dirty, last commit
+  cd [repo]              Print repo path (no arg = workspace root)
   setup [filter]         Clone missing repos
   code [filter]          Generate VS Code workspace and open it
   list [--all]           Show repos in manifest (--all includes excluded)
@@ -202,6 +218,24 @@ Filters:
   <group>                Group name: ai, eng, db, inf
   <group>,<group>        Comma-separated groups
   <repo>                 Individual repo name
+`)
+}
+
+func printShellInit() {
+	fmt.Print(`# Add to ~/.bashrc or ~/.zshrc:
+#   eval "$(ws init)"
+
+ws() {
+  case "$1" in
+    cd)
+      local dir
+      dir="$(command ws cd "${@:2}")" && cd "$dir"
+      ;;
+    *)
+      command ws "$@"
+      ;;
+  esac
+}
 `)
 }
 
