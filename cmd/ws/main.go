@@ -92,7 +92,7 @@ func main() {
 
 	case "fetch":
 		filter := filterArg(args, ctx)
-		if err := command.Super(m, parentDir, filter, []string{"git", "fetch"}); err != nil {
+		if err := command.Fetch(m, parentDir, filter); err != nil {
 			fatal(err)
 		}
 
