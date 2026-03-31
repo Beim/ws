@@ -1,4 +1,4 @@
-module bitbucket.org/xtracta/ws
+module github.com/dtuit/ws
 
 go 1.24.3
 

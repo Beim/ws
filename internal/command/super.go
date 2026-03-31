@@ -3,8 +3,8 @@ package command
 import (
 	"fmt"
 
-	"bitbucket.org/xtracta/ws/internal/git"
-	"bitbucket.org/xtracta/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/git"
+	"github.com/dtuit/ws/internal/manifest"
 )
 
 // Super runs an arbitrary command in each repo directory.

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"bitbucket.org/xtracta/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/manifest"
 )
 
 // List prints a table of repos from the manifest with their status.

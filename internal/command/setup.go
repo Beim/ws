@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"bitbucket.org/xtracta/ws/internal/git"
-	"bitbucket.org/xtracta/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/git"
+	"github.com/dtuit/ws/internal/manifest"
 )
 
 // Setup clones missing repos.

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"bitbucket.org/xtracta/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/manifest"
 )
 
 // Focus updates the VS Code workspace file to show only the filtered repos.
@@ -75,7 +75,7 @@ func findWorkspaceFile(dir string) (string, error) {
 	return "", fmt.Errorf("no .code-workspace file found in %s", dir)
 }
 
-// FocusJSON is exported for testing — applies focus transformation to workspace JSON.
+// FocusJSON is exported for testing - applies focus transformation to workspace JSON.
 func FocusJSON(data []byte, repos []manifest.RepoInfo) ([]byte, error) {
 	var ws map[string]interface{}
 	if err := json.Unmarshal(data, &ws); err != nil {

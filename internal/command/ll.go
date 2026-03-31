@@ -3,9 +3,9 @@ package command
 import (
 	"fmt"
 
-	"bitbucket.org/xtracta/ws/internal/git"
-	"bitbucket.org/xtracta/ws/internal/manifest"
-	"bitbucket.org/xtracta/ws/internal/term"
+	"github.com/dtuit/ws/internal/git"
+	"github.com/dtuit/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/term"
 )
 
 // LL displays a dashboard of repo status: branch, dirty state, last commit.

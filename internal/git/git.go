@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"bitbucket.org/xtracta/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/manifest"
 )
 
 // RepoStatus holds the result of querying a single repo's git state.

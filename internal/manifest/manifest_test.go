@@ -151,7 +151,7 @@ func TestResolveFilter_Empty(t *testing.T) {
 	require.NoError(t, err)
 
 	repos := m.ResolveFilter("")
-	// Same as "all" — returns grouped repos
+	// Same as "all" - returns grouped repos
 	assert.Len(t, repos, 5)
 }
 
@@ -231,7 +231,7 @@ groups:
 	assert.Equal(t, []string{"old-repo", "my-experiment"}, m.Groups["my-group"])
 	assert.Equal(t, []string{"global-auth", "xtracta-app"}, m.Groups["eng"]) // preserved
 
-	// old-repo is in both repos and exclude — repos wins, it's active
+	// old-repo is in both repos and exclude - repos wins, it's active
 	active := m.ActiveRepos()
 	assert.Contains(t, active, "old-repo")
 }

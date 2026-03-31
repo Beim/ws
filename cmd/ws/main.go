@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"bitbucket.org/xtracta/ws/internal/command"
-	"bitbucket.org/xtracta/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/command"
+	"github.com/dtuit/ws/internal/manifest"
 )
 
 var version = "dev"
