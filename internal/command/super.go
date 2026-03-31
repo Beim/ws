@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"os/exec"
 
 	"github.com/dtuit/ws/internal/git"
 	"github.com/dtuit/ws/internal/manifest"
@@ -9,6 +10,11 @@ import (
 
 // Super runs an arbitrary command in each repo directory.
 func Super(m *manifest.Manifest, parentDir, filter string, cmdArgs []string) error {
+	// Validate the command exists before fanning out
+	if _, err := exec.LookPath(cmdArgs[0]); err != nil {
+		return fmt.Errorf("command not found: %s", cmdArgs[0])
+	}
+
 	repos := m.ResolveFilter(filter)
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
