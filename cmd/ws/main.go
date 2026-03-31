@@ -67,9 +67,9 @@ func main() {
 			fatal(err)
 		}
 
-	case "focus":
+	case "code":
 		filter := filterArg(args, ctx)
-		if err := command.Focus(m, parentDir, wsHome, filter); err != nil {
+		if err := command.Code(m, parentDir, wsHome, filter); err != nil {
 			fatal(err)
 		}
 
@@ -183,7 +183,7 @@ func usage() {
 Commands:
   ll [filter]            Dashboard: branch, dirty, last commit
   setup [filter]         Clone missing repos
-  focus [filter]         Filter VS Code workspace folders
+  code [filter]          Generate VS Code workspace and open it
   list [--all]           Show repos in manifest (--all includes excluded)
   fetch [filter]         Fetch all repos
   pull [filter]          Pull all repos

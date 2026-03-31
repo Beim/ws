@@ -9,57 +9,60 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFocusJSON_PreservesSettings(t *testing.T) {
-	input := `{
-  "folders": [
-    {"name": "~ workspace", "path": "."},
-    {"name": "old-repo", "path": "../old-repo"}
-  ],
-  "settings": {
-    "files.exclude": {"**/.git": true}
-  }
-}`
+func TestBuildWorkspaceJSON(t *testing.T) {
 	repos := []manifest.RepoInfo{
 		{Name: "repo-a"},
 		{Name: "repo-b"},
 	}
 
-	out, err := FocusJSON([]byte(input), repos, "..")
+	out, err := BuildWorkspaceJSON(repos, "..")
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
 	require.NoError(t, json.Unmarshal(out, &ws))
 
-	// Settings preserved
+	// Has default settings
 	settings, ok := ws["settings"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Contains(t, settings, "files.exclude")
 
-	// Folders updated
+	// Folders: workspace + 2 repos
 	folders, ok := ws["folders"].([]interface{})
 	require.True(t, ok)
-	assert.Len(t, folders, 3) // workspace + 2 repos
+	assert.Len(t, folders, 3)
 
-	// First folder is workspace
+	// First folder is workspace root
 	first := folders[0].(map[string]interface{})
 	assert.Equal(t, "~ workspace", first["name"])
+	assert.Equal(t, ".", first["path"])
 
-	// Second folder is repo-a
+	// Repo folders have correct paths
 	second := folders[1].(map[string]interface{})
 	assert.Equal(t, "repo-a", second["name"])
 	assert.Equal(t, "../repo-a", second["path"])
 }
 
-func TestFocusJSON_EmptyRepos(t *testing.T) {
-	input := `{"folders": [{"name": "~ workspace", "path": "."}], "settings": {}}`
-
-	out, err := FocusJSON([]byte(input), nil, "..")
+func TestBuildWorkspaceJSON_EmptyRepos(t *testing.T) {
+	out, err := BuildWorkspaceJSON(nil, "..")
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
 	require.NoError(t, json.Unmarshal(out, &ws))
 	folders := ws["folders"].([]interface{})
-	assert.Len(t, folders, 1) // just workspace
+	assert.Len(t, folders, 1) // just workspace root
+}
+
+func TestBuildWorkspaceJSON_CustomRoot(t *testing.T) {
+	repos := []manifest.RepoInfo{{Name: "my-repo"}}
+
+	out, err := BuildWorkspaceJSON(repos, "/abs/path/to/repos")
+	require.NoError(t, err)
+
+	var ws map[string]interface{}
+	require.NoError(t, json.Unmarshal(out, &ws))
+	folders := ws["folders"].([]interface{})
+	second := folders[1].(map[string]interface{})
+	assert.Equal(t, "/abs/path/to/repos/my-repo", second["path"])
 }
 
 func TestParseSuperArgs_WithGroup(t *testing.T) {

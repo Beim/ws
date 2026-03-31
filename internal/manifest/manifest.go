@@ -13,6 +13,7 @@ import (
 // Manifest is the parsed workspace manifest.
 type Manifest struct {
 	Root          string              // directory where repos live, relative to manifest dir (default "..")
+	Workspace     string              // VS Code workspace filename (default "ws.code-workspace")
 	Remotes       map[string]string   // name → URL prefix ("default" is the fallback)
 	DefaultBranch string              // default branch for all repos
 	Groups        map[string][]string // group name → ordered repo names
@@ -37,13 +38,14 @@ type RepoInfo struct {
 
 // rawManifest is the YAML deserialization target.
 type rawManifest struct {
-	Root    string                       `yaml:"root"`    // where repos live (default "..")
-	Remote  string                       `yaml:"remote"`  // backward compat: singular
-	Remotes map[string]string            `yaml:"remotes"` // named remotes
-	Branch  string                       `yaml:"branch"`
-	Groups  map[string][]string          `yaml:"groups"`
-	Repos   map[string]map[string]string `yaml:"repos"`
-	Exclude []string                     `yaml:"exclude"`
+	Root      string                       `yaml:"root"`      // where repos live (default "..")
+	Workspace string                       `yaml:"workspace"` // VS Code workspace filename
+	Remote    string                       `yaml:"remote"`    // backward compat: singular
+	Remotes   map[string]string            `yaml:"remotes"`   // named remotes
+	Branch    string                       `yaml:"branch"`
+	Groups    map[string][]string          `yaml:"groups"`
+	Repos     map[string]map[string]string `yaml:"repos"`
+	Exclude   []string                     `yaml:"exclude"`
 }
 
 const maxManifestSize = 1 << 20 // 1MB
@@ -73,6 +75,7 @@ func Parse(data []byte) (*Manifest, error) {
 
 	m := &Manifest{
 		Root:          raw.Root,
+		Workspace:     raw.Workspace,
 		Remotes:       make(map[string]string),
 		DefaultBranch: raw.Branch,
 		Groups:        raw.Groups,
@@ -82,6 +85,9 @@ func Parse(data []byte) (*Manifest, error) {
 
 	if m.Root == "" {
 		m.Root = ".."
+	}
+	if m.Workspace == "" {
+		m.Workspace = "ws.code-workspace"
 	}
 	if m.DefaultBranch == "" {
 		m.DefaultBranch = "master"
@@ -164,6 +170,11 @@ func (m *Manifest) MergeLocal(path string) error {
 	// Root: local overrides if explicitly set (not the default "..")
 	if local.Root != ".." {
 		m.Root = local.Root
+	}
+
+	// Workspace: local overrides if explicitly set
+	if local.Workspace != "ws.code-workspace" {
+		m.Workspace = local.Workspace
 	}
 
 	// Remotes: union, local wins on conflict
