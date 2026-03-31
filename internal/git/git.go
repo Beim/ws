@@ -92,53 +92,21 @@ func Status(repoDir, name string) RepoStatus {
 		return s
 	}
 
-	// Get branch
-	branch, err := gitCmd(repoDir, "rev-parse", "--abbrev-ref", "HEAD")
+	// Single command: branch, ahead/behind, staged, unstaged, untracked
+	statusOut, err := gitCmd(repoDir, "status", "--porcelain=v2", "--branch")
 	if err != nil {
 		s.Err = err
 		return s
 	}
-	if branch == "HEAD" {
-		s.Branch = "(detached)"
-	} else {
-		s.Branch = branch
-	}
+	parseStatusV2(&s, statusOut)
 
-	// Detect staged changes: index differs from HEAD
-	if _, err := gitCmd(repoDir, "diff", "--cached", "--quiet"); err != nil {
-		s.Staged = true
-	}
-
-	// Detect unstaged changes: working tree differs from index
-	if _, err := gitCmd(repoDir, "diff", "--quiet"); err != nil {
-		s.Unstaged = true
-	}
-
-	// Detect untracked files
-	untracked, _ := gitCmd(repoDir, "ls-files", "--others", "--exclude-standard")
-	if untracked != "" {
-		s.Untracked = true
-	}
-
-	// Check for stash
+	// Stash: check file existence (no git command needed)
 	stashFile := filepath.Join(repoDir, ".git", "logs", "refs", "stash")
 	if _, err := os.Stat(stashFile); err == nil {
 		s.Stashed = true
 	}
 
-	// Get ahead/behind upstream
-	counts, err := gitCmd(repoDir, "rev-list", "--left-right", "--count", "@{u}...HEAD")
-	if err != nil {
-		s.NoRemote = true
-	} else {
-		parts := strings.Fields(counts)
-		if len(parts) == 2 {
-			s.Behind, _ = strconv.Atoi(parts[0])
-			s.Ahead, _ = strconv.Atoi(parts[1])
-		}
-	}
-
-	// Get last commit
+	// Last commit message + age
 	logOut, err := gitCmd(repoDir, "log", "-1", "--format=%s\x1f%ar")
 	if err != nil {
 		s.CommitMsg = "(no commits)"
@@ -151,6 +119,56 @@ func Status(repoDir, name string) RepoStatus {
 	}
 
 	return s
+}
+
+// parseStatusV2 parses `git status --porcelain=v2 --branch` output into RepoStatus.
+// Format: https://git-scm.com/docs/git-status#_porcelain_format_version_2
+func parseStatusV2(s *RepoStatus, output string) {
+	s.NoRemote = true // assume no remote until we see branch.upstream
+
+	for _, line := range strings.Split(output, "\n") {
+		switch {
+		case strings.HasPrefix(line, "# branch.head "):
+			head := strings.TrimPrefix(line, "# branch.head ")
+			if head == "(detached)" {
+				s.Branch = "(detached)"
+			} else {
+				s.Branch = head
+			}
+
+		case strings.HasPrefix(line, "# branch.upstream "):
+			s.NoRemote = false
+
+		case strings.HasPrefix(line, "# branch.ab "):
+			// "# branch.ab +3 -1" means ahead 3, behind 1
+			ab := strings.TrimPrefix(line, "# branch.ab ")
+			parts := strings.Fields(ab)
+			if len(parts) == 2 {
+				s.Ahead, _ = strconv.Atoi(strings.TrimPrefix(parts[0], "+"))
+				s.Behind, _ = strconv.Atoi(strings.TrimPrefix(parts[1], "-"))
+			}
+
+		case strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 "):
+			// Changed entry: "1 XY ..." or "2 XY ..." (renamed)
+			if len(line) >= 4 {
+				x, y := line[2], line[3]
+				if x != '.' {
+					s.Staged = true
+				}
+				if y != '.' {
+					s.Unstaged = true
+				}
+			}
+
+		case strings.HasPrefix(line, "? "):
+			s.Untracked = true
+
+		case strings.HasPrefix(line, "u "):
+			// Unmerged entry - count as both staged and unstaged
+			s.Staged = true
+			s.Unstaged = true
+		}
+	}
 }
 
 // Workers returns the effective worker count: WS_WORKERS env, or min(cpus, repoCount).
