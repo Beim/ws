@@ -28,7 +28,19 @@ func main() {
 	}
 
 	if cmd == "init" {
-		printShellInit()
+		// Print just the function (for eval), without the markers
+		fmt.Print(`ws() {
+  case "$1" in
+    cd)
+      local dir
+      dir="$(command ws cd "${@:2}")" && cd "$dir"
+      ;;
+    *)
+      command ws "$@"
+      ;;
+  esac
+}
+`)
 		return
 	}
 	if cmd == "help" || cmd == "--help" || cmd == "-h" {
@@ -78,7 +90,7 @@ func main() {
 
 	case "setup":
 		filter := filterArg(args, ctx)
-		if err := command.Setup(m, parentDir, filter); err != nil {
+		if err := command.Setup(m, parentDir, wsHome, filter); err != nil {
 			fatal(err)
 		}
 
@@ -218,24 +230,6 @@ Filters:
   <group>                Group name: ai, eng, db, inf
   <group>,<group>        Comma-separated groups
   <repo>                 Individual repo name
-`)
-}
-
-func printShellInit() {
-	fmt.Print(`# Add to ~/.bashrc or ~/.zshrc:
-#   eval "$(ws init)"
-
-ws() {
-  case "$1" in
-    cd)
-      local dir
-      dir="$(command ws cd "${@:2}")" && cd "$dir"
-      ;;
-    *)
-      command ws "$@"
-      ;;
-  esac
-}
 `)
 }
 
