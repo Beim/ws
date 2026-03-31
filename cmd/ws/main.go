@@ -88,8 +88,17 @@ func main() {
 		}
 
 	case "setup":
-		filter := filterArg(args, ctx)
-		if err := command.Setup(m, parentDir, wsHome, filter); err != nil {
+		installShell := false
+		var filterArgs []string
+		for _, a := range args {
+			if a == "--install-shell" {
+				installShell = true
+			} else {
+				filterArgs = append(filterArgs, a)
+			}
+		}
+		filter := filterArg(filterArgs, ctx)
+		if err := command.Setup(m, parentDir, wsHome, filter, installShell); err != nil {
 			fatal(err)
 		}
 
