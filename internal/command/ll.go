@@ -16,7 +16,8 @@ func LL(m *manifest.Manifest, parentDir, filter string) error {
 		return nil
 	}
 
-	statuses := git.StatusAll(parentDir, repos, 20)
+	workers := git.Workers(len(repos))
+	statuses := git.StatusAll(parentDir, repos, workers)
 
 	// Calculate column widths
 	maxName, maxBranch := 0, 0
@@ -36,24 +37,36 @@ func LL(m *manifest.Manifest, parentDir, filter string) error {
 			continue
 		}
 
+		// Status symbols: +staged *unstaged ?untracked $stashed
+		symbols := s.Symbols()
+		sync := s.SyncSymbol()
+
+		// Color based on state
 		var color string
 		switch {
 		case s.Branch == "(detached)":
 			color = term.Red
-		case s.Dirty:
+		case s.Ahead > 0 && s.Behind > 0:
+			color = term.Red
+		case s.Ahead > 0:
+			color = term.Magenta
+		case s.Behind > 0:
 			color = term.Yellow
+		case s.IsDirty():
+			color = term.Yellow
+		case s.NoRemote:
+			color = term.Cyan
 		default:
 			color = term.Green
 		}
 
-		dirty := " "
-		if s.Dirty {
-			dirty = "*"
-		}
+		// Pad symbols to fixed width for alignment
+		symbolStr := fmt.Sprintf("%-4s", symbols)
+		syncStr := fmt.Sprintf("%-4s", sync)
 
 		msg := s.CommitMsg
-		if len(msg) > 70 {
-			msg = msg[:67] + "..."
+		if len(msg) > 60 {
+			msg = msg[:57] + "..."
 		}
 
 		age := ""
@@ -61,8 +74,9 @@ func LL(m *manifest.Manifest, parentDir, filter string) error {
 			age = " " + term.Colorize(term.Dim, "("+s.CommitAge+")")
 		}
 
-		fmt.Printf("%s  %s%s\n",
-			term.Colorize(color, fmt.Sprintf("%-*s  %-*s [%s]", maxName, s.Name, maxBranch, s.Branch, dirty)),
+		fmt.Printf("%s %s  %s%s\n",
+			term.Colorize(color, fmt.Sprintf("%-*s  %-*s %s[%s]", maxName, s.Name, maxBranch, s.Branch, syncStr, symbolStr)),
+			"",
 			msg, age)
 	}
 	return nil

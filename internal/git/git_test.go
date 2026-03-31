@@ -39,47 +39,150 @@ func TestStatus_CleanRepo(t *testing.T) {
 	s := Status(repoDir, "clean-repo")
 	assert.NoError(t, s.Err)
 	assert.Equal(t, "master", s.Branch)
-	assert.False(t, s.Dirty)
+	assert.False(t, s.Staged)
+	assert.False(t, s.Unstaged)
+	assert.False(t, s.Untracked)
+	assert.False(t, s.Stashed)
+	assert.False(t, s.IsDirty())
+	assert.True(t, s.NoRemote) // no upstream set
 	assert.Equal(t, "initial commit", s.CommitMsg)
 	assert.NotEmpty(t, s.CommitAge)
 }
 
-func TestStatus_DirtyRepo(t *testing.T) {
+func TestStatus_UntrackedFile(t *testing.T) {
 	dir := t.TempDir()
-	repoDir := initTestRepo(t, dir, "dirty-repo")
+	repoDir := initTestRepo(t, dir, "untracked-repo")
 
-	// Create an untracked file
 	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "new.txt"), []byte("hello"), 0644))
 
-	s := Status(repoDir, "dirty-repo")
+	s := Status(repoDir, "untracked-repo")
 	assert.NoError(t, s.Err)
-	assert.True(t, s.Dirty)
+	assert.True(t, s.Untracked)
+	assert.False(t, s.Staged)
+	assert.False(t, s.Unstaged)
+	assert.True(t, s.IsDirty())
+	assert.Equal(t, "?", s.Symbols())
+}
+
+func TestStatus_StagedChanges(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "staged-repo")
+
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "file.txt"), []byte("hello"), 0644))
+	cmd := exec.Command("git", "add", "file.txt")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+
+	s := Status(repoDir, "staged-repo")
+	assert.NoError(t, s.Err)
+	assert.True(t, s.Staged)
+	assert.False(t, s.Unstaged)
+	assert.True(t, s.IsDirty())
+	assert.Contains(t, s.Symbols(), "+")
+}
+
+func TestStatus_UnstagedChanges(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "unstaged-repo")
+
+	// Create and commit a file, then use git to modify working tree
+	fpath := filepath.Join(repoDir, "file.txt")
+	require.NoError(t, os.WriteFile(fpath, []byte("v1"), 0644))
+	for _, args := range [][]string{
+		{"git", "add", "."},
+		{"git", "commit", "-m", "add file"},
+	} {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = repoDir
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "cmd %v: %s", args, out)
+	}
+
+	// Use git update-index to refresh, then modify
+	cmd := exec.Command("git", "status")
+	cmd.Dir = repoDir
+	cmd.Run() // refresh stat cache
+
+	require.NoError(t, os.WriteFile(fpath, []byte("v2-modified-content"), 0644))
+
+	s := Status(repoDir, "unstaged-repo")
+	assert.NoError(t, s.Err)
+	assert.True(t, s.Unstaged, "expected unstaged changes")
+	assert.False(t, s.Staged, "expected no staged changes")
+	assert.Contains(t, s.Symbols(), "*")
+}
+
+func TestStatus_MixedDirtyState(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "mixed-repo")
+
+	// Staged file
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "staged.txt"), []byte("s"), 0644))
+	cmd := exec.Command("git", "add", "staged.txt")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+
+	// Untracked file
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "untracked.txt"), []byte("u"), 0644))
+
+	s := Status(repoDir, "mixed-repo")
+	assert.True(t, s.Staged)
+	assert.True(t, s.Untracked)
+	assert.Contains(t, s.Symbols(), "+")
+	assert.Contains(t, s.Symbols(), "?")
 }
 
 func TestStatus_DetachedHead(t *testing.T) {
 	dir := t.TempDir()
 	repoDir := initTestRepo(t, dir, "detached-repo")
 
-	// Get current commit hash and checkout detached
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = repoDir
-	hash, err := cmd.Output()
-	require.NoError(t, err)
-
-	cmd = exec.Command("git", "checkout", "--detach", "HEAD")
+	cmd := exec.Command("git", "checkout", "--detach", "HEAD")
 	cmd.Dir = repoDir
 	require.NoError(t, cmd.Run())
 
 	s := Status(repoDir, "detached-repo")
 	assert.NoError(t, s.Err)
 	assert.Equal(t, "(detached)", s.Branch)
-	_ = hash
 }
 
 func TestStatus_MissingDir(t *testing.T) {
 	s := Status("/nonexistent/path", "missing")
 	assert.Error(t, s.Err)
 	assert.Contains(t, s.Err.Error(), "not cloned")
+}
+
+func TestStatus_NoRemote(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "no-remote")
+
+	s := Status(repoDir, "no-remote")
+	assert.True(t, s.NoRemote)
+	assert.Equal(t, "~", s.SyncSymbol())
+}
+
+func TestSymbols_Empty(t *testing.T) {
+	s := RepoStatus{}
+	assert.Equal(t, "", s.Symbols())
+}
+
+func TestSyncSymbol_InSync(t *testing.T) {
+	s := RepoStatus{Ahead: 0, Behind: 0, NoRemote: false}
+	assert.Equal(t, "=", s.SyncSymbol())
+}
+
+func TestSyncSymbol_Ahead(t *testing.T) {
+	s := RepoStatus{Ahead: 3}
+	assert.Equal(t, "↑3", s.SyncSymbol())
+}
+
+func TestSyncSymbol_Behind(t *testing.T) {
+	s := RepoStatus{Behind: 2}
+	assert.Equal(t, "↓2", s.SyncSymbol())
+}
+
+func TestSyncSymbol_Diverged(t *testing.T) {
+	s := RepoStatus{Ahead: 1, Behind: 2}
+	assert.Equal(t, "1⇕2", s.SyncSymbol())
 }
 
 func TestStatusAll_Parallel(t *testing.T) {
@@ -105,7 +208,6 @@ func TestStatusAll_Parallel(t *testing.T) {
 func TestStatusAll_MixedState(t *testing.T) {
 	dir := t.TempDir()
 
-	// One real repo, one missing
 	initTestRepo(t, dir, "exists")
 	repos := []manifest.RepoInfo{
 		{Name: "exists"},
@@ -115,4 +217,18 @@ func TestStatusAll_MixedState(t *testing.T) {
 	results := StatusAll(dir, repos, 5)
 	assert.NoError(t, results[0].Err)
 	assert.Error(t, results[1].Err)
+}
+
+func TestWorkers_Default(t *testing.T) {
+	os.Unsetenv("WS_WORKERS")
+	w := Workers(100)
+	assert.Greater(t, w, 0)
+	// Should be capped at CPU count
+	w2 := Workers(1)
+	assert.Equal(t, 1, w2) // min(cpus, 1) = 1
+}
+
+func TestWorkers_EnvOverride(t *testing.T) {
+	t.Setenv("WS_WORKERS", "8")
+	assert.Equal(t, 8, Workers(100))
 }

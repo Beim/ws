@@ -15,7 +15,8 @@ func Super(m *manifest.Manifest, parentDir, filter string, cmdArgs []string) err
 		return nil
 	}
 
-	failCount := git.Exec(parentDir, repos, cmdArgs, 20)
+	workers := git.Workers(len(repos))
+	failCount := git.Exec(parentDir, repos, cmdArgs, workers)
 	if failCount > 0 {
 		return fmt.Errorf("%d repo(s) failed", failCount)
 	}
