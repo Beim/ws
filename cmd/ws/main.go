@@ -98,7 +98,7 @@ func main() {
 
 	case "pull":
 		filter := filterArg(args, ctx)
-		if err := command.Super(m, parentDir, filter, []string{"git", "pull"}); err != nil {
+		if err := command.Pull(m, parentDir, filter); err != nil {
 			fatal(err)
 		}
 
