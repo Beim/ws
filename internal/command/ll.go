@@ -74,9 +74,8 @@ func LL(m *manifest.Manifest, parentDir, filter string) error {
 			age = " " + term.Colorize(term.Dim, "("+s.CommitAge+")")
 		}
 
-		fmt.Printf("%s %s  %s%s\n",
+		fmt.Printf("%s  %s%s\n",
 			term.Colorize(color, fmt.Sprintf("%-*s  %-*s %s[%s]", maxName, s.Name, maxBranch, s.Branch, syncStr, symbolStr)),
-			"",
 			msg, age)
 	}
 	return nil

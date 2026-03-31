@@ -172,11 +172,15 @@ func parseStatusV2(s *RepoStatus, output string) {
 }
 
 // Workers returns the effective worker count: WS_WORKERS env, or min(cpus, repoCount).
+// Always returns at least 1.
 func Workers(repoCount int) int {
 	if env := os.Getenv("WS_WORKERS"); env != "" {
 		if n, err := strconv.Atoi(env); err == nil && n > 0 {
 			return n
 		}
+	}
+	if repoCount <= 0 {
+		return 1
 	}
 	cpus := runtime.NumCPU()
 	if repoCount < cpus {
@@ -206,90 +210,15 @@ func StatusAll(parentDir string, repos []manifest.RepoInfo, maxWorkers int) []Re
 	return results
 }
 
-// Exec runs a command in each repo dir in parallel, printing prefixed output
-// as each repo completes. Shows a progress counter for silent commands.
+// Exec runs a command in each repo dir in parallel, printing prefixed output.
+// Only suppresses git credential prompts when the command is git.
 // Returns the number of repos that failed.
 func Exec(parentDir string, repos []manifest.RepoInfo, cmdArgs []string, maxWorkers int) int {
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxWorkers)
-	failCount := 0
-	done := 0
-	total := len(repos)
-
-	// Calculate max name length for alignment
-	maxName := 0
-	for _, r := range repos {
-		if len(r.Name) > maxName {
-			maxName = len(r.Name)
-		}
-	}
-
-	// Prevent git from hanging on credential/passphrase prompts
-	noPromptEnv := append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_SSH_COMMAND=ssh -o BatchMode=yes",
-	)
-
-	// Detect if stdout is a TTY for progress display
-	fi, _ := os.Stdout.Stat()
-	isTTY := fi != nil && fi.Mode()&os.ModeCharDevice != 0
-
-	for _, repo := range repos {
-		wg.Add(1)
-		go func(r manifest.RepoInfo) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			prefix := fmt.Sprintf("%-*s | ", maxName, r.Name)
-			repoDir := filepath.Join(parentDir, r.Name)
-
-			if _, err := os.Stat(filepath.Join(repoDir, ".git")); err != nil {
-				mu.Lock()
-				fmt.Fprintf(os.Stderr, "%sskipped (not cloned)\n", prefix)
-				done++
-				mu.Unlock()
-				return
-			}
-
-			cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
-			cmd.Dir = repoDir
-			cmd.Stdin = nil
-			cmd.Env = noPromptEnv
-			output, err := cmd.CombinedOutput()
-
-			mu.Lock()
-			defer mu.Unlock()
-
-			done++
-			text := strings.TrimRight(string(output), "\n")
-			if text != "" {
-				if isTTY {
-					fmt.Print("\r\033[K") // clear progress line
-				}
-				for _, line := range strings.Split(text, "\n") {
-					fmt.Println(prefix + line)
-				}
-			} else if isTTY {
-				// No output - show progress counter
-				fmt.Fprintf(os.Stderr, "\r\033[K%s done (%d/%d)", r.Name, done, total)
-			}
-			if err != nil {
-				if isTTY {
-					fmt.Print("\r\033[K")
-				}
-				fmt.Fprintf(os.Stderr, "%sfailed: %v\n", prefix, err)
-				failCount++
-			}
-		}(repo)
-	}
-
-	wg.Wait()
-	if isTTY {
-		fmt.Fprint(os.Stderr, "\r\033[K") // clear final progress line
-	}
-	return failCount
+	isGit := len(cmdArgs) > 0 && cmdArgs[0] == "git"
+	return RunAll(parentDir, repos, cmdArgs, maxWorkers, RunOpts{
+		Verb:      "running",
+		GitPrompt: !isGit, // only suppress prompts for git commands
+	})
 }
 
 // Clone clones a single repo.
