@@ -1,0 +1,48 @@
+package command
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"bitbucket.org/xtracta/ws/internal/git"
+	"bitbucket.org/xtracta/ws/internal/manifest"
+)
+
+// Setup clones missing repos.
+func Setup(m *manifest.Manifest, parentDir, filter string) error {
+	repos := m.ResolveFilter(filter)
+	if len(repos) == 0 {
+		fmt.Println("No repos matched the filter.")
+		return nil
+	}
+
+	cloned := 0
+	for _, repo := range repos {
+		repoDir := filepath.Join(parentDir, repo.Name)
+		if _, err := os.Stat(repoDir); err == nil {
+			continue
+		}
+		fmt.Printf("  Cloning %s (%s)...\n", repo.Name, repo.Branch)
+		if err := git.Clone(parentDir, repo); err != nil {
+			fmt.Fprintf(os.Stderr, "  FAILED: %v\n", err)
+			continue
+		}
+		cloned++
+	}
+
+	// Count total cloned
+	total := 0
+	for _, repo := range m.AllRepos() {
+		gitDir := filepath.Join(parentDir, repo.Name, ".git")
+		if _, err := os.Stat(gitDir); err == nil {
+			total++
+		}
+	}
+
+	if cloned > 0 {
+		fmt.Printf("Cloned %d repo(s).\n", cloned)
+	}
+	fmt.Printf("Setup complete: %d repo(s) on disk.\n", total)
+	return nil
+}
