@@ -74,25 +74,22 @@ func Fetch(m *manifest.Manifest, parentDir, filter string) error {
 			done++
 			fetchOutput := strings.TrimSpace(string(output))
 
-			if err != nil {
-				if isTTY {
-					fmt.Print("\r\033[K")
-				}
-				fmt.Fprintf(os.Stderr, "%s%s\n", prefix, term.Colorize(term.Red, "failed: "+err.Error()))
-				failCount++
-				return
+			if isTTY {
+				fmt.Fprint(os.Stderr, "\r\033[K")
 			}
 
-			if fetchOutput != "" {
-				// git fetch produced output (new refs, pruned branches, etc)
-				if isTTY {
-					fmt.Print("\r\033[K")
-				}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s%s\n", prefix, term.Colorize(term.Red, "failed: "+err.Error()))
+				failCount++
+			} else if fetchOutput != "" {
 				for _, line := range strings.Split(fetchOutput, "\n") {
 					fmt.Println(prefix + line)
 				}
-			} else if isTTY {
-				fmt.Fprintf(os.Stderr, "\r\033[Kfetching... %d/%d %s", done, total, r.Name)
+			}
+
+			// Always show progress
+			if isTTY && done < total {
+				fmt.Fprintf(os.Stderr, "\r\033[Kfetching... %d/%d", done, total)
 			}
 		}(repo)
 	}
