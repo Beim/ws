@@ -19,6 +19,7 @@ func TestParseCodeArgs_WorktreesFlags(t *testing.T) {
 		{"-W", "backend"},
 		{"-t", "backend"},
 		{"backend", "--worktrees"},
+		{"backend", "-t"},
 		{"backend", "-W"},
 		{"-t"},
 	}
@@ -65,7 +66,26 @@ func TestParseContextArgs_Add(t *testing.T) {
 	assert.Equal(t, "backend,repo-a", filter)
 }
 
+func TestParseContextArgs_SetWithWorktreesFlag(t *testing.T) {
+	action, filter, err := parseContextArgs([]string{"-t", "backend"})
+	require.NoError(t, err)
+	assert.Equal(t, "set", action)
+	assert.Equal(t, "backend", filter)
+}
+
+func TestParseContextArgs_AddWithWorktreesFlag(t *testing.T) {
+	action, filter, err := parseContextArgs([]string{"add", "-t", "backend", "repo-a"})
+	require.NoError(t, err)
+	assert.Equal(t, "add", action)
+	assert.Equal(t, "backend,repo-a", filter)
+}
+
 func TestParseContextArgs_AddRequiresFilter(t *testing.T) {
 	_, _, err := parseContextArgs([]string{"add"})
+	require.Error(t, err)
+}
+
+func TestParseContextArgs_RejectsUnknownFlag(t *testing.T) {
+	_, _, err := parseContextArgs([]string{"--bogus"})
 	require.Error(t, err)
 }

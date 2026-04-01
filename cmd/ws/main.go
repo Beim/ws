@@ -26,7 +26,7 @@ func main() {
 		case (args[0] == "-w" || args[0] == "--workspace") && len(args) > 1:
 			wsHomeOverride = args[1]
 			args = args[2:]
-		case args[0] == "--worktrees" || args[0] == "-W":
+		case args[0] == "--worktrees" || args[0] == "-W" || args[0] == "-t":
 			globalWorktrees = true
 			args = args[1:]
 		default:
@@ -146,7 +146,7 @@ dispatch:
 	case "list":
 		showAll := false
 		args, showAll = stripBoolFlag(args, "--all", "-a")
-		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W")
+		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W", "-t")
 		if len(args) > 0 {
 			fatal(fmt.Errorf("list does not take a filter"))
 		}
@@ -155,7 +155,7 @@ dispatch:
 		}
 
 	case "ll":
-		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W")
+		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W", "-t")
 		filter := filterArg(args, ctx)
 		if err := command.LL(m, wsHome, filter, globalWorktrees || localWorktrees); err != nil {
 			fatal(err)
@@ -168,7 +168,7 @@ dispatch:
 		}
 
 	case "pull":
-		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W")
+		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W", "-t")
 		filter := filterArg(args, ctx)
 		if err := command.Pull(m, wsHome, filter, globalWorktrees || localWorktrees); err != nil {
 			fatal(err)
@@ -181,7 +181,7 @@ dispatch:
 			filter = ctx
 		}
 		if len(cmdArgs) == 0 {
-			fmt.Fprintln(os.Stderr, "Usage: ws -- [--worktrees] [filter] <command...>")
+			fmt.Fprintln(os.Stderr, "Usage: ws -- [-t|--worktrees] [filter] <command...>")
 			os.Exit(1)
 		}
 		if err := command.Super(m, wsHome, filter, cmdArgs, globalWorktrees || localWorktrees); err != nil {
@@ -380,16 +380,29 @@ func parseCodeArgs(args []string, ctx string) (string, error) {
 }
 
 func parseContextArgs(args []string) (action string, filter string, err error) {
-	if len(args) == 0 {
+	var filtered []string
+	for _, arg := range args {
+		switch arg {
+		case "-t", "-W", "--worktrees":
+			// Worktree inclusion is the current default for context-generated workspaces.
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return "", "", fmt.Errorf("unknown context flag: %s", arg)
+			}
+			filtered = append(filtered, arg)
+		}
+	}
+
+	if len(filtered) == 0 {
 		return "show", "", nil
 	}
-	if args[0] == "add" {
-		if len(args) == 1 {
-			return "", "", fmt.Errorf("usage: ws context add <filter>")
+	if filtered[0] == "add" {
+		if len(filtered) == 1 {
+			return "", "", fmt.Errorf("usage: ws context add [-t|--worktrees] <filter>")
 		}
-		return "add", strings.Join(args[1:], ","), nil
+		return "add", strings.Join(filtered[1:], ","), nil
 	}
-	return "set", strings.Join(args, ","), nil
+	return "set", strings.Join(filtered, ","), nil
 }
 
 func findWorkspaceHome(override string) (string, error) {
@@ -441,30 +454,32 @@ func usage() {
 
 Commands:
   init                   Emit shell integration and completion
-  ll [filter] [--worktrees]
+  ll [filter] [-t|--worktrees]
                          Dashboard: branch, dirty, last commit
   cd [repo] [--worktree <selector>]
                          Print repo path (no arg = workspace root)
   setup [filter]         Clone missing repos
   code [-t|--worktrees] [filter]
                          Generate VS Code workspace and open it
-  list [--all] [--worktrees]
+  list [--all] [-t|--worktrees]
                          Show repos in manifest (--all includes excluded)
   fetch [filter]         Fetch all repos
-  pull [filter] [--worktrees]
+  pull [filter] [-t|--worktrees]
                          Pull manifest checkouts or all discovered worktrees
-  context [filter]       Set default filter (no arg = show, "none" = clear)
-  context add <filter>   Add groups or repos to the existing context
+  context [-t|--worktrees] [filter]
+                         Set default filter (no arg = show, "none" = clear)
+  context add [-t|--worktrees] <filter>
+                         Add groups or repos to the existing context
 
 Any unrecognized command is run across repos:
   ws git status          Run "git status" in all repos
-  ws --worktrees git status
+  ws -t git status
                          Run "git status" in all discovered worktrees
   ws ai git log -1       Run "git log -1" in a group
   ws ls -la              Any command, not just git
 
 Use -- to escape built-in names:
-  ws -- [--worktrees] fetch data.json
+  ws -- [-t|--worktrees] fetch data.json
                          Run "fetch data.json" (not git fetch)
 
 Filters:
@@ -497,7 +512,7 @@ func completionWorkspaceOverride(words []string) string {
 				return ""
 			}
 			return strings.TrimSpace(words[i+1])
-		case "-W", "--worktrees":
+		case "-t", "-W", "--worktrees":
 			continue
 		default:
 			if !strings.HasPrefix(words[i], "-") {

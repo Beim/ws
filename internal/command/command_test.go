@@ -163,6 +163,23 @@ repos:
 	assert.True(t, includeWorktrees)
 }
 
+func TestParseSuperArgs_ShorthandWorktreesBeforeFilter(t *testing.T) {
+	m, err := manifest.Parse([]byte(`
+remotes:
+  default: git@example.com
+groups:
+  ai: [repo-a]
+repos:
+  repo-a:
+`))
+	require.NoError(t, err)
+
+	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, []string{"-t", "ai", "git", "status"})
+	assert.Equal(t, "ai", filter)
+	assert.Equal(t, []string{"git", "status"}, cmdArgs)
+	assert.True(t, includeWorktrees)
+}
+
 func TestParseSuperArgs_WorktreesAfterFilter(t *testing.T) {
 	m, err := manifest.Parse([]byte(`
 remotes:
@@ -228,6 +245,7 @@ repos:
 	assert.Contains(t, result.Values, "backend")
 	assert.Contains(t, result.Values, "repo-a")
 	assert.Contains(t, result.Values, "--workspace")
+	assert.Contains(t, result.Values, "-t")
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.False(t, result.FallbackCommands)
 }
@@ -315,9 +333,26 @@ repos:
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"ll", ""}, 1)
+	assert.Contains(t, result.Values, "-t")
 	assert.Contains(t, result.Values, "-W")
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "ai")
+}
+
+func TestCompleteListIncludesWorktreesFlagAndShowAll(t *testing.T) {
+	m, err := manifest.Parse([]byte(`
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+`))
+	require.NoError(t, err)
+
+	result := Complete(m, []string{"list", ""}, 1)
+	assert.Contains(t, result.Values, "--all")
+	assert.Contains(t, result.Values, "-a")
+	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--worktrees")
 }
 
 func TestCompletePassthroughAfterWorktreesFallsBackToCommands(t *testing.T) {
@@ -335,6 +370,21 @@ repos:
 	assert.True(t, result.FallbackCommands)
 }
 
+func TestCompletePassthroughAfterShorthandWorktreesFallsBackToCommands(t *testing.T) {
+	m, err := manifest.Parse([]byte(`
+remotes:
+  default: git@example.com
+groups:
+  ai: [repo-a]
+repos:
+  repo-a:
+`))
+	require.NoError(t, err)
+
+	result := Complete(m, []string{"--", "-t", "gi"}, 2)
+	assert.True(t, result.FallbackCommands)
+}
+
 func TestCompleteContextIncludesReset(t *testing.T) {
 	m, err := manifest.Parse([]byte(`
 remotes:
@@ -347,9 +397,28 @@ repos:
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"context", ""}, 1)
+	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "add")
 	assert.Contains(t, result.Values, "none")
 	assert.Contains(t, result.Values, "reset")
+}
+
+func TestCompleteContextAfterWorktreesFlagIncludesFilters(t *testing.T) {
+	m, err := manifest.Parse([]byte(`
+remotes:
+  default: git@example.com
+groups:
+  ai: [repo-a]
+repos:
+  repo-a:
+`))
+	require.NoError(t, err)
+
+	result := Complete(m, []string{"context", "-t", ""}, 2)
+	assert.Contains(t, result.Values, "add")
+	assert.Contains(t, result.Values, "ai")
+	assert.Contains(t, result.Values, "repo-a")
 }
 
 func TestCompleteContextAddSuggestsFilters(t *testing.T) {
@@ -366,6 +435,7 @@ repos:
 	result := Complete(m, []string{"context", "add", ""}, 2)
 	assert.Contains(t, result.Values, "ai")
 	assert.Contains(t, result.Values, "repo-a")
+	assert.Contains(t, result.Values, "-t")
 	assert.NotContains(t, result.Values, "reset")
 }
 

@@ -37,7 +37,7 @@ func Super(m *manifest.Manifest, wsHome, filter string, cmdArgs []string, includ
 func ParseSuperArgs(m *manifest.Manifest, args []string) (filter string, cmdArgs []string, includeWorktrees bool) {
 	for i, arg := range args {
 		switch {
-		case arg == "--worktrees" || arg == "-W":
+		case arg == "--worktrees" || arg == "-W" || arg == "-t":
 			includeWorktrees = true
 		case filter == "" && isFilterToken(m, arg):
 			filter = arg

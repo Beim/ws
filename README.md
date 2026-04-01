@@ -188,18 +188,20 @@ Operate from the workspace repo. `ws` finds the workspace by:
 Core commands:
 
 ```text
-ws ll [filter] [--worktrees]
+ws ll [filter] [-t|--worktrees]
                           Dashboard: branch, dirty state, last commit
-ws list [--all] [--worktrees]
+ws list [--all] [-t|--worktrees]
                           Show repos in the manifest
 ws setup [filter]         Clone missing repos
 ws fetch [filter]         Fetch all repos in scope
-ws pull [filter] [--worktrees]
+ws pull [filter] [-t|--worktrees]
                           Pull manifest checkouts or all discovered worktrees
-ws context [filter]       Persist the default filter
+ws context [-t|--worktrees] [filter]
+                          Persist the default filter
 ws code [-t|--worktrees] [filter]
                           Generate the VS Code workspace file
-ws context add <filter>   Extend the current context
+ws context add [-t|--worktrees] <filter>
+                          Extend the current context
 ws cd [repo] [--worktree <selector>]
                           Print repo path (or workspace root)
 ws init                   Emit shell integration and completion
@@ -211,7 +213,7 @@ Any unrecognized command is executed across repos automatically:
 
 ```bash
 ws git status
-ws --worktrees git status
+ws -t git status
 ws backend git log --oneline -3
 ws ops make plan
 ws -- fetch data.json
@@ -235,8 +237,9 @@ If you want a repo included in default operations, put it in at least one group.
 `ws` discovers linked git worktrees at runtime from the manifest checkout. They are not stored in `manifest.yml`.
 
 - Default commands still target the manifest checkout for each repo.
-- `ws list` shows a `WT` count for each repo; `ws list --worktrees` expands to one row per checkout.
-- `ws ll --worktrees`, `ws pull --worktrees`, and `ws --worktrees <command...>` expand operations to all discovered worktrees.
+- `ws list` shows a `WT` count for each repo; `ws list -t` or `ws list --worktrees` expands to one row per checkout.
+- `ws ll -t`, `ws pull -t`, and `ws -t <command...>` expand operations to all discovered worktrees.
+- `ws context -t` and `ws code -t` are accepted as explicit worktree-aware forms for consistency.
 - `ws cd api-server --worktree feature/auth` resolves a linked worktree by unique branch, path basename, or exact path.
 - `ws fetch` remains repo-scoped and runs once per manifest repo.
 - `ws code` always includes sibling worktrees in the generated workspace, and `ws code -t backend` is accepted as an explicit form.
