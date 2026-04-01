@@ -9,15 +9,15 @@ import (
 )
 
 // LL displays a dashboard of repo status: branch, dirty state, last commit.
-func LL(m *manifest.Manifest, parentDir, filter string) error {
-	repos := m.ResolveFilter(filter)
+func LL(m *manifest.Manifest, wsHome, filter string) error {
+	repos := m.ResolveFilter(filter, wsHome)
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil
 	}
 
 	workers := git.Workers(len(repos))
-	statuses := git.StatusAll(parentDir, repos, workers)
+	statuses := git.StatusAll(repos, workers)
 
 	// Calculate column widths
 	maxName, maxBranch := 0, 0

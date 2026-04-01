@@ -8,15 +8,15 @@ import (
 )
 
 // Fetch runs git fetch --prune across repos with progress and per-repo output.
-func Fetch(m *manifest.Manifest, parentDir, filter string) error {
-	repos := m.ResolveFilter(filter)
+func Fetch(m *manifest.Manifest, wsHome, filter string) error {
+	repos := m.ResolveFilter(filter, wsHome)
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil
 	}
 
 	workers := git.Workers(len(repos))
-	failCount := git.RunAll(parentDir, repos, []string{"git", "fetch", "--prune"}, workers, git.RunOpts{
+	failCount := git.RunAll(repos, []string{"git", "fetch", "--prune"}, workers, git.RunOpts{
 		Verb:    "fetching",
 		Summary: "Fetched",
 	})

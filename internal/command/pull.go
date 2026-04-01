@@ -8,15 +8,15 @@ import (
 )
 
 // Pull runs git pull --ff-only across repos with progress and per-repo output.
-func Pull(m *manifest.Manifest, parentDir, filter string) error {
-	repos := m.ResolveFilter(filter)
+func Pull(m *manifest.Manifest, wsHome, filter string) error {
+	repos := m.ResolveFilter(filter, wsHome)
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil
 	}
 
 	workers := git.Workers(len(repos))
-	failCount := git.RunAll(parentDir, repos, []string{"git", "pull", "--ff-only"}, workers, git.RunOpts{
+	failCount := git.RunAll(repos, []string{"git", "pull", "--ff-only"}, workers, git.RunOpts{
 		Verb:     "pulling",
 		Summary:  "Pulled",
 		Suppress: "Already up to date.",

@@ -11,11 +11,11 @@ import (
 
 func TestBuildWorkspaceJSON(t *testing.T) {
 	repos := []manifest.RepoInfo{
-		{Name: "repo-a"},
-		{Name: "repo-b"},
+		{Name: "repo-a", Path: "/workspace/repos/repo-a"},
+		{Name: "repo-b", Path: "/workspace/repos/repo-b"},
 	}
 
-	out, err := BuildWorkspaceJSON(repos, "..")
+	out, err := BuildWorkspaceJSON(repos, "/workspace")
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
@@ -39,11 +39,11 @@ func TestBuildWorkspaceJSON(t *testing.T) {
 	// Repo folders have correct paths
 	second := folders[1].(map[string]interface{})
 	assert.Equal(t, "repo-a", second["name"])
-	assert.Equal(t, "../repo-a", second["path"])
+	assert.Equal(t, "repos/repo-a", second["path"])
 }
 
 func TestBuildWorkspaceJSON_EmptyRepos(t *testing.T) {
-	out, err := BuildWorkspaceJSON(nil, "..")
+	out, err := BuildWorkspaceJSON(nil, "/workspace")
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
@@ -52,17 +52,23 @@ func TestBuildWorkspaceJSON_EmptyRepos(t *testing.T) {
 	assert.Len(t, folders, 1) // just workspace root
 }
 
-func TestBuildWorkspaceJSON_CustomRoot(t *testing.T) {
-	repos := []manifest.RepoInfo{{Name: "my-repo"}}
+func TestBuildWorkspaceJSON_PerRepoRoots(t *testing.T) {
+	repos := []manifest.RepoInfo{
+		{Name: "default-repo", Path: "/workspace/../default-repo"},
+		{Name: "vendor-repo", Path: "/workspace/vendor/vendor-repo"},
+		{Name: "external-repo", Path: "/opt/external/external-repo"},
+	}
 
-	out, err := BuildWorkspaceJSON(repos, "/abs/path/to/repos")
+	out, err := BuildWorkspaceJSON(repos, "/workspace")
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
 	require.NoError(t, json.Unmarshal(out, &ws))
 	folders := ws["folders"].([]interface{})
-	second := folders[1].(map[string]interface{})
-	assert.Equal(t, "/abs/path/to/repos/my-repo", second["path"])
+
+	assert.Equal(t, "../default-repo", folders[1].(map[string]interface{})["path"])
+	assert.Equal(t, "vendor/vendor-repo", folders[2].(map[string]interface{})["path"])
+	assert.Equal(t, "../opt/external/external-repo", folders[3].(map[string]interface{})["path"])
 }
 
 func TestParseSuperArgs_WithGroup(t *testing.T) {

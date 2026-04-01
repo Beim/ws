@@ -9,20 +9,20 @@ import (
 )
 
 // Super runs an arbitrary command in each repo directory.
-func Super(m *manifest.Manifest, parentDir, filter string, cmdArgs []string) error {
+func Super(m *manifest.Manifest, wsHome, filter string, cmdArgs []string) error {
 	// Validate the command exists before fanning out
 	if _, err := exec.LookPath(cmdArgs[0]); err != nil {
 		return fmt.Errorf("command not found: %s", cmdArgs[0])
 	}
 
-	repos := m.ResolveFilter(filter)
+	repos := m.ResolveFilter(filter, wsHome)
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil
 	}
 
 	workers := git.Workers(len(repos))
-	failCount := git.Exec(parentDir, repos, cmdArgs, workers)
+	failCount := git.Exec(repos, cmdArgs, workers)
 	if failCount > 0 {
 		return fmt.Errorf("%d repo(s) failed", failCount)
 	}

@@ -11,18 +11,12 @@ import (
 )
 
 // Code generates a VS Code workspace file and opens it.
-func Code(m *manifest.Manifest, parentDir, wsHome, filter string) error {
-	repos := m.ResolveFilter(filter)
+func Code(m *manifest.Manifest, wsHome, filter string) error {
+	repos := m.ResolveFilter(filter, wsHome)
 
 	wsFile := filepath.Join(wsHome, m.Workspace)
 
-	// Compute relative path from workspace file to repo root
-	relRoot, err := filepath.Rel(wsHome, parentDir)
-	if err != nil {
-		relRoot = parentDir
-	}
-
-	ws := buildWorkspace(repos, relRoot)
+	ws := buildWorkspace(repos, wsHome)
 
 	out, err := json.MarshalIndent(ws, "", "  ")
 	if err != nil {
@@ -50,14 +44,18 @@ func Code(m *manifest.Manifest, parentDir, wsHome, filter string) error {
 }
 
 // buildWorkspace creates the VS Code workspace JSON structure.
-func buildWorkspace(repos []manifest.RepoInfo, relRoot string) map[string]interface{} {
+func buildWorkspace(repos []manifest.RepoInfo, wsHome string) map[string]interface{} {
 	folders := []interface{}{
 		map[string]interface{}{"name": "~ workspace", "path": "."},
 	}
 	for _, repo := range repos {
+		relPath, err := filepath.Rel(wsHome, repo.Path)
+		if err != nil {
+			relPath = repo.Path
+		}
 		folders = append(folders, map[string]interface{}{
 			"name": repo.Name,
-			"path": filepath.Join(relRoot, repo.Name),
+			"path": relPath,
 		})
 	}
 
@@ -72,8 +70,8 @@ func buildWorkspace(repos []manifest.RepoInfo, relRoot string) map[string]interf
 }
 
 // BuildWorkspaceJSON is exported for testing.
-func BuildWorkspaceJSON(repos []manifest.RepoInfo, relRoot string) ([]byte, error) {
-	ws := buildWorkspace(repos, relRoot)
+func BuildWorkspaceJSON(repos []manifest.RepoInfo, wsHome string) ([]byte, error) {
+	ws := buildWorkspace(repos, wsHome)
 	out, err := json.MarshalIndent(ws, "", "  ")
 	if err != nil {
 		return nil, err

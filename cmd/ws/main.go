@@ -69,15 +69,13 @@ func main() {
 		fatal(err)
 	}
 
-	parentDir := m.ResolveRoot(wsHome)
-
 	// Context: use as default filter when no explicit filter is given
 	ctx := command.GetContext(wsHome)
 
 	switch cmd {
 	case "context":
 		if len(args) > 0 {
-			if err := command.SetContext(m, wsHome, parentDir, args[0]); err != nil {
+			if err := command.SetContext(m, wsHome, args[0]); err != nil {
 				fatal(err)
 			}
 		} else {
@@ -89,10 +87,11 @@ func main() {
 			fmt.Println(wsHome)
 		} else {
 			name := args[0]
-			if _, ok := m.ActiveRepos()[name]; !ok {
+			cfg, ok := m.ActiveRepos()[name]
+			if !ok {
 				fatal(fmt.Errorf("unknown repo: %s", name))
 			}
-			fmt.Println(filepath.Join(parentDir, name))
+			fmt.Println(m.ResolvePath(wsHome, name, cfg))
 		}
 
 	case "setup":
@@ -106,13 +105,13 @@ func main() {
 			}
 		}
 		filter := filterArg(filterArgs, ctx)
-		if err := command.Setup(m, parentDir, wsHome, filter, installShell); err != nil {
+		if err := command.Setup(m, wsHome, filter, installShell); err != nil {
 			fatal(err)
 		}
 
 	case "code":
 		filter := filterArg(args, ctx)
-		if err := command.Code(m, parentDir, wsHome, filter); err != nil {
+		if err := command.Code(m, wsHome, filter); err != nil {
 			fatal(err)
 		}
 
@@ -123,25 +122,25 @@ func main() {
 				showAll = true
 			}
 		}
-		if err := command.List(m, parentDir, showAll); err != nil {
+		if err := command.List(m, wsHome, showAll); err != nil {
 			fatal(err)
 		}
 
 	case "ll":
 		filter := filterArg(args, ctx)
-		if err := command.LL(m, parentDir, filter); err != nil {
+		if err := command.LL(m, wsHome, filter); err != nil {
 			fatal(err)
 		}
 
 	case "fetch":
 		filter := filterArg(args, ctx)
-		if err := command.Fetch(m, parentDir, filter); err != nil {
+		if err := command.Fetch(m, wsHome, filter); err != nil {
 			fatal(err)
 		}
 
 	case "pull":
 		filter := filterArg(args, ctx)
-		if err := command.Pull(m, parentDir, filter); err != nil {
+		if err := command.Pull(m, wsHome, filter); err != nil {
 			fatal(err)
 		}
 
@@ -155,7 +154,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Usage: ws -- [filter] <command...>")
 			os.Exit(1)
 		}
-		if err := command.Super(m, parentDir, filter, cmdArgs); err != nil {
+		if err := command.Super(m, wsHome, filter, cmdArgs); err != nil {
 			fatal(err)
 		}
 
@@ -171,7 +170,7 @@ func main() {
 			usage()
 			os.Exit(1)
 		}
-		if err := command.Super(m, parentDir, filter, cmdArgs); err != nil {
+		if err := command.Super(m, wsHome, filter, cmdArgs); err != nil {
 			fatal(err)
 		}
 	}

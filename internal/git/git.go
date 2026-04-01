@@ -190,7 +190,7 @@ func Workers(repoCount int) int {
 }
 
 // StatusAll queries git status for multiple repos in parallel.
-func StatusAll(parentDir string, repos []manifest.RepoInfo, maxWorkers int) []RepoStatus {
+func StatusAll(repos []manifest.RepoInfo, maxWorkers int) []RepoStatus {
 	results := make([]RepoStatus, len(repos))
 	sem := make(chan struct{}, maxWorkers)
 	var wg sync.WaitGroup
@@ -201,8 +201,7 @@ func StatusAll(parentDir string, repos []manifest.RepoInfo, maxWorkers int) []Re
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			repoDir := filepath.Join(parentDir, r.Name)
-			results[idx] = Status(repoDir, r.Name)
+			results[idx] = Status(r.Path, r.Name)
 		}(i, repo)
 	}
 
@@ -213,18 +212,17 @@ func StatusAll(parentDir string, repos []manifest.RepoInfo, maxWorkers int) []Re
 // Exec runs a command in each repo dir in parallel, printing prefixed output.
 // Only suppresses git credential prompts when the command is git.
 // Returns the number of repos that failed.
-func Exec(parentDir string, repos []manifest.RepoInfo, cmdArgs []string, maxWorkers int) int {
+func Exec(repos []manifest.RepoInfo, cmdArgs []string, maxWorkers int) int {
 	isGit := len(cmdArgs) > 0 && cmdArgs[0] == "git"
-	return RunAll(parentDir, repos, cmdArgs, maxWorkers, RunOpts{
+	return RunAll(repos, cmdArgs, maxWorkers, RunOpts{
 		Verb:      "running",
 		GitPrompt: !isGit, // only suppress prompts for git commands
 	})
 }
 
 // Clone clones a single repo.
-func Clone(parentDir string, repo manifest.RepoInfo) error {
-	repoDir := filepath.Join(parentDir, repo.Name)
-	cmd := exec.Command("git", "clone", "-b", repo.Branch, "--single-branch", "--", repo.URL, repoDir)
+func Clone(repo manifest.RepoInfo) error {
+	cmd := exec.Command("git", "clone", "-b", repo.Branch, "--single-branch", "--", repo.URL, repo.Path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

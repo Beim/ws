@@ -189,15 +189,15 @@ func TestStatusAll_Parallel(t *testing.T) {
 	dir := t.TempDir()
 
 	repos := []manifest.RepoInfo{
-		{Name: "repo-a"},
-		{Name: "repo-b"},
-		{Name: "repo-c"},
+		{Name: "repo-a", Path: filepath.Join(dir, "repo-a")},
+		{Name: "repo-b", Path: filepath.Join(dir, "repo-b")},
+		{Name: "repo-c", Path: filepath.Join(dir, "repo-c")},
 	}
 	for _, r := range repos {
 		initTestRepo(t, dir, r.Name)
 	}
 
-	results := StatusAll(dir, repos, 5)
+	results := StatusAll(repos, 5)
 	assert.Len(t, results, 3)
 	for i, s := range results {
 		assert.NoError(t, s.Err, "repo %s", repos[i].Name)
@@ -210,11 +210,11 @@ func TestStatusAll_MixedState(t *testing.T) {
 
 	initTestRepo(t, dir, "exists")
 	repos := []manifest.RepoInfo{
-		{Name: "exists"},
-		{Name: "missing"},
+		{Name: "exists", Path: filepath.Join(dir, "exists")},
+		{Name: "missing", Path: filepath.Join(dir, "missing")},
 	}
 
-	results := StatusAll(dir, repos, 5)
+	results := StatusAll(repos, 5)
 	assert.NoError(t, results[0].Err)
 	assert.Error(t, results[1].Err)
 }

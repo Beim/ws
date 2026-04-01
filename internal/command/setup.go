@@ -12,8 +12,8 @@ import (
 )
 
 // Setup clones missing repos. With installShell, writes shell config to bashrc/zshrc.
-func Setup(m *manifest.Manifest, parentDir, wsHome, filter string, installShell bool) error {
-	repos := m.ResolveFilter(filter)
+func Setup(m *manifest.Manifest, wsHome, filter string, installShell bool) error {
+	repos := m.ResolveFilter(filter, wsHome)
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil
@@ -21,8 +21,7 @@ func Setup(m *manifest.Manifest, parentDir, wsHome, filter string, installShell 
 
 	cloned := 0
 	for _, repo := range repos {
-		repoDir := filepath.Join(parentDir, repo.Name)
-		if _, err := os.Stat(repoDir); err == nil {
+		if _, err := os.Stat(repo.Path); err == nil {
 			continue
 		}
 		if err := manifest.ValidateURL(repo.URL); err != nil {
@@ -30,7 +29,7 @@ func Setup(m *manifest.Manifest, parentDir, wsHome, filter string, installShell 
 			continue
 		}
 		fmt.Printf("  Cloning %s (%s)...\n", repo.Name, repo.Branch)
-		if err := git.Clone(parentDir, repo); err != nil {
+		if err := git.Clone(repo); err != nil {
 			fmt.Fprintf(os.Stderr, "  FAILED: %v\n", err)
 			continue
 		}
@@ -38,8 +37,8 @@ func Setup(m *manifest.Manifest, parentDir, wsHome, filter string, installShell 
 	}
 
 	total := 0
-	for _, repo := range m.AllRepos() {
-		gitDir := filepath.Join(parentDir, repo.Name, ".git")
+	for _, repo := range m.AllRepos(wsHome) {
+		gitDir := filepath.Join(repo.Path, ".git")
 		if _, err := os.Stat(gitDir); err == nil {
 			total++
 		}

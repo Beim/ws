@@ -14,10 +14,10 @@ import (
 
 // RunOpts configures a parallel command run across repos.
 type RunOpts struct {
-	Verb       string // progress label: "fetching", "pulling", etc.
-	Summary    string // summary label: "Fetched", "Pulled", etc.
-	Suppress   string // suppress this exact output (e.g. "Already up to date.")
-	GitPrompt  bool   // if false, suppress git credential prompts (default: suppress)
+	Verb      string // progress label: "fetching", "pulling", etc.
+	Summary   string // summary label: "Fetched", "Pulled", etc.
+	Suppress  string // suppress this exact output (e.g. "Already up to date.")
+	GitPrompt bool   // if false, suppress git credential prompts (default: suppress)
 }
 
 // RunResult is the outcome of running a command in one repo.
@@ -29,7 +29,7 @@ type RunResult struct {
 
 // RunAll runs a command in each repo dir in parallel with progress display.
 // Returns the number of repos that failed.
-func RunAll(parentDir string, repos []manifest.RepoInfo, cmdArgs []string, maxWorkers int, opts RunOpts) int {
+func RunAll(repos []manifest.RepoInfo, cmdArgs []string, maxWorkers int, opts RunOpts) int {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, maxWorkers)
@@ -63,9 +63,8 @@ func RunAll(parentDir string, repos []manifest.RepoInfo, cmdArgs []string, maxWo
 			defer func() { <-sem }()
 
 			prefix := fmt.Sprintf("%-*s | ", maxName, r.Name)
-			repoDir := filepath.Join(parentDir, r.Name)
 
-			if _, err := os.Stat(filepath.Join(repoDir, ".git")); err != nil {
+			if _, err := os.Stat(filepath.Join(r.Path, ".git")); err != nil {
 				mu.Lock()
 				done++
 				fmt.Fprintf(os.Stderr, "%sskipped (not cloned)\n", prefix)
@@ -74,7 +73,7 @@ func RunAll(parentDir string, repos []manifest.RepoInfo, cmdArgs []string, maxWo
 			}
 
 			cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
-			cmd.Dir = repoDir
+			cmd.Dir = r.Path
 			cmd.Stdin = nil
 			if env != nil {
 				cmd.Env = env

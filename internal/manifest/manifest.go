@@ -26,6 +26,7 @@ type RepoConfig struct {
 	Branch string // empty = use DefaultBranch
 	Remote string // empty = use "default" remote
 	URL    string // non-empty = full clone URL (overrides Remote)
+	Root   string // empty = use manifest Root; relative resolved against wsHome
 }
 
 // RepoInfo is a fully resolved repo entry.
@@ -34,6 +35,7 @@ type RepoInfo struct {
 	URL    string
 	Branch string
 	Groups []string
+	Path   string // absolute path to repo on disk
 }
 
 // rawManifest is the YAML deserialization target.
@@ -109,6 +111,7 @@ func Parse(data []byte) (*Manifest, error) {
 			rc.Branch = cfg["branch"]
 			rc.Remote = cfg["remote"]
 			rc.URL = cfg["url"]
+			rc.Root = cfg["root"]
 		}
 		m.Repos[name] = rc
 	}
@@ -226,6 +229,19 @@ func (m *Manifest) ResolveRoot(wsHome string) string {
 	return filepath.Join(wsHome, m.Root)
 }
 
+// ResolvePath returns the absolute path to a repo on disk.
+// Per-repo Root overrides the manifest-level Root.
+func (m *Manifest) ResolvePath(wsHome, name string, cfg RepoConfig) string {
+	root := m.Root
+	if cfg.Root != "" {
+		root = cfg.Root
+	}
+	if filepath.IsAbs(root) {
+		return filepath.Join(root, name)
+	}
+	return filepath.Clean(filepath.Join(wsHome, root, name))
+}
+
 // ValidateURL checks that a URL uses a safe git transport scheme.
 func ValidateURL(url string) error {
 	// Allow SSH shorthand (git@host:org/repo.git)
@@ -278,7 +294,8 @@ func (m *Manifest) ActiveRepos() map[string]RepoConfig {
 }
 
 // AllRepos returns all active repos as sorted RepoInfo slice.
-func (m *Manifest) AllRepos() []RepoInfo {
+// wsHome is the directory containing the manifest, used to resolve repo paths.
+func (m *Manifest) AllRepos(wsHome string) []RepoInfo {
 	active := m.ActiveRepos()
 	repoGroups := m.RepoGroups()
 
@@ -289,6 +306,7 @@ func (m *Manifest) AllRepos() []RepoInfo {
 			URL:    m.ResolveURL(name, cfg),
 			Branch: m.ResolveBranch(cfg),
 			Groups: repoGroups[name],
+			Path:   m.ResolvePath(wsHome, name, cfg),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
@@ -297,7 +315,8 @@ func (m *Manifest) AllRepos() []RepoInfo {
 
 // ResolveFilter resolves a filter string into an ordered list of RepoInfo.
 // "" or "all" → all repos in any group. Group name → group members. Comma-separated → union.
-func (m *Manifest) ResolveFilter(filter string) []RepoInfo {
+// wsHome is the directory containing the manifest, used to resolve repo paths.
+func (m *Manifest) ResolveFilter(filter, wsHome string) []RepoInfo {
 	active := m.ActiveRepos()
 	repoGroups := m.RepoGroups()
 
@@ -320,6 +339,7 @@ func (m *Manifest) ResolveFilter(filter string) []RepoInfo {
 						URL:    m.ResolveURL(name, cfg),
 						Branch: m.ResolveBranch(cfg),
 						Groups: repoGroups[name],
+						Path:   m.ResolvePath(wsHome, name, cfg),
 					})
 					seen[name] = true
 				}
@@ -343,6 +363,7 @@ func (m *Manifest) ResolveFilter(filter string) []RepoInfo {
 						URL:    m.ResolveURL(name, cfg),
 						Branch: m.ResolveBranch(cfg),
 						Groups: repoGroups[name],
+						Path:   m.ResolvePath(wsHome, name, cfg),
 					})
 					seen[name] = true
 				}
@@ -354,6 +375,7 @@ func (m *Manifest) ResolveFilter(filter string) []RepoInfo {
 				URL:    m.ResolveURL(token, cfg),
 				Branch: m.ResolveBranch(cfg),
 				Groups: repoGroups[token],
+				Path:   m.ResolvePath(wsHome, token, cfg),
 			})
 			seen[token] = true
 		} else if !seen[token] {

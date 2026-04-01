@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testWSHome = "/tmp/test-ws"
+
 const testManifest = `
 remotes:
   default: git@github.com:acme-corp
@@ -91,7 +93,7 @@ func TestResolveFilter_All(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	repos := m.ResolveFilter("all")
+	repos := m.ResolveFilter("all", testWSHome)
 	names := repoNames(repos)
 	// Should contain all repos that are in at least one group
 	assert.Contains(t, names, "api-server")
@@ -108,7 +110,7 @@ func TestResolveFilter_GroupName(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	repos := m.ResolveFilter("backend")
+	repos := m.ResolveFilter("backend", testWSHome)
 	names := repoNames(repos)
 	assert.Equal(t, []string{"api-server", "auth-service", "worker"}, names)
 }
@@ -117,7 +119,7 @@ func TestResolveFilter_CommaSeparated(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	repos := m.ResolveFilter("backend,frontend")
+	repos := m.ResolveFilter("backend,frontend", testWSHome)
 	names := repoNames(repos)
 	assert.Contains(t, names, "api-server")
 	assert.Contains(t, names, "web-app")
@@ -128,7 +130,7 @@ func TestResolveFilter_SingleRepo(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	repos := m.ResolveFilter("worker")
+	repos := m.ResolveFilter("worker", testWSHome)
 	assert.Len(t, repos, 1)
 	assert.Equal(t, "worker", repos[0].Name)
 }
@@ -137,7 +139,7 @@ func TestResolveFilter_Empty(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	repos := m.ResolveFilter("")
+	repos := m.ResolveFilter("", testWSHome)
 	// Same as "all" - returns grouped repos
 	assert.Len(t, repos, 5)
 }
@@ -146,7 +148,7 @@ func TestAllRepos(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	repos := m.AllRepos()
+	repos := m.AllRepos(testWSHome)
 	assert.Len(t, repos, 7) // all 7 active repos
 	// Should be sorted
 	assert.Equal(t, "admin-dashboard", repos[0].Name)
@@ -284,6 +286,50 @@ func TestValidateURL(t *testing.T) {
 	}
 	for _, url := range invalid {
 		assert.Error(t, ValidateURL(url), "should reject: %s", url)
+	}
+}
+
+func TestResolvePath_Default(t *testing.T) {
+	m, err := Parse([]byte(testManifest))
+	require.NoError(t, err)
+
+	// Default root is "..", so path = wsHome/../repo-name
+	path := m.ResolvePath("/home/user/workspace", "api-server", m.Repos["api-server"])
+	assert.Equal(t, "/home/user/api-server", path)
+}
+
+func TestResolvePath_PerRepoRoot(t *testing.T) {
+	yaml := `
+remotes:
+  default: git@example.com
+repos:
+  normal-repo:
+  special-repo: { root: /opt/external }
+  relative-repo: { root: vendor }
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+
+	wsHome := "/home/user/workspace"
+
+	// Normal repo uses manifest default root (..)
+	assert.Equal(t, "/home/user/normal-repo", m.ResolvePath(wsHome, "normal-repo", m.Repos["normal-repo"]))
+
+	// Absolute per-repo root
+	assert.Equal(t, "/opt/external/special-repo", m.ResolvePath(wsHome, "special-repo", m.Repos["special-repo"]))
+
+	// Relative per-repo root (resolved against wsHome)
+	assert.Equal(t, "/home/user/workspace/vendor/relative-repo", m.ResolvePath(wsHome, "relative-repo", m.Repos["relative-repo"]))
+}
+
+func TestAllRepos_PathPopulated(t *testing.T) {
+	m, err := Parse([]byte(testManifest))
+	require.NoError(t, err)
+
+	repos := m.AllRepos("/home/user/workspace")
+	for _, r := range repos {
+		assert.NotEmpty(t, r.Path, "Path should be populated for %s", r.Name)
+		assert.Contains(t, r.Path, r.Name)
 	}
 }
 

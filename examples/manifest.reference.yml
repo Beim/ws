@@ -87,6 +87,9 @@ groups:
 # Combine overrides:
 #   special: { remote: upstream, branch: v2 }
 #
+# Override the clone root for one repo:
+#   legacy-vendor: { root: vendor }
+#
 # Repo names must be simple directory names (no /, \, or ..).
 # Repos listed here are always active, even if they also appear in exclude:.
 

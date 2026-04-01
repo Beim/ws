@@ -10,8 +10,8 @@ import (
 )
 
 // List prints a table of repos from the manifest with their status.
-func List(m *manifest.Manifest, parentDir string, showAll bool) error {
-	repos := m.AllRepos()
+func List(m *manifest.Manifest, wsHome string, showAll bool) error {
+	repos := m.AllRepos(wsHome)
 	repoGroups := m.RepoGroups()
 
 	fmt.Printf("%-42s %-16s %-10s %s\n", "REPO", "BRANCH", "GROUPS", "CLONED")
@@ -23,7 +23,7 @@ func List(m *manifest.Manifest, parentDir string, showAll bool) error {
 			groups = "-"
 		}
 		cloned := "-"
-		gitDir := filepath.Join(parentDir, r.Name, ".git")
+		gitDir := filepath.Join(r.Path, ".git")
 		if _, err := os.Stat(gitDir); err == nil {
 			cloned = "yes"
 		}
