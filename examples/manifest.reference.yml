@@ -1,0 +1,161 @@
+# ws manifest reference
+# https://github.com/dtuit/ws
+#
+# This file documents every option. Copy and trim to create your own manifest.yml.
+
+# ---------------------------------------------------------------------------
+# remotes
+# ---------------------------------------------------------------------------
+# Named URL prefixes for git clone. The "default" remote is used when a repo
+# does not specify a remote: override.
+#
+# Clone URLs are constructed as: <remote>/<repo-name>.git
+# e.g. git@github.com:acme-corp/api-server.git
+#
+# Allowed schemes: git@ (SSH shorthand), https://, ssh://, git://, http://
+# Rejected: ext::, file://, ftp://, or anything starting with --
+#
+# You can also use the legacy singular form:
+#   remote: git@github.com:acme-corp
+# which is equivalent to:
+#   remotes:
+#     default: git@github.com:acme-corp
+
+remotes:
+  default: git@github.com:acme-corp
+  upstream: https://github.com/open-source-org
+
+# ---------------------------------------------------------------------------
+# branch
+# ---------------------------------------------------------------------------
+# Default branch for all repos. Individual repos can override this.
+# Default: master
+
+branch: main
+
+# ---------------------------------------------------------------------------
+# root
+# ---------------------------------------------------------------------------
+# Directory where repos are cloned, relative to this file (or absolute).
+# Default: ..   (parent directory - repos as siblings of the workspace)
+#
+# Examples:
+#   root: ..              # sibling layout (default)
+#   root: repos           # repos inside workspace directory
+#   root: /opt/code       # absolute path
+
+root: ..
+
+# ---------------------------------------------------------------------------
+# workspace
+# ---------------------------------------------------------------------------
+# Filename for the generated VS Code workspace file (created by ws code).
+# Placed in the same directory as this manifest.
+# Default: ws.code-workspace
+
+workspace: ws.code-workspace
+
+# ---------------------------------------------------------------------------
+# groups
+# ---------------------------------------------------------------------------
+# Named sets of repos. Used for filtering across all commands:
+#   ws ll backend          show dashboard for backend repos
+#   ws context backend     scope all commands to backend
+#   ws code backend        generate VS Code workspace for backend
+#   ws fetch backend       fetch only backend repos
+#   ws backend git status  run git status in backend repos
+#
+# A repo can appear in multiple groups.
+# "all" is a reserved filter that returns every repo in at least one group.
+
+groups:
+  backend:  [api-server, auth-service, worker]
+  frontend: [web-app, admin-dashboard]
+  infra:    [deploy-configs, shared-protos]
+
+# ---------------------------------------------------------------------------
+# repos
+# ---------------------------------------------------------------------------
+# Active repos. Each entry is cloned by ws setup and visible to all commands.
+#
+# Bare entries use the default remote and branch:
+#   api-server:
+#
+# Override branch:
+#   auth-service: { branch: develop }
+#
+# Use a named remote (defined above in remotes:):
+#   upstream-lib: { remote: upstream }
+#
+# Use a full URL (ignores remotes entirely):
+#   custom-tool: { url: git@custom.host:org/repo.git }
+#
+# Combine overrides:
+#   special: { remote: upstream, branch: v2 }
+#
+# Repo names must be simple directory names (no /, \, or ..).
+# Repos listed here are always active, even if they also appear in exclude:.
+
+repos:
+  # Backend
+  api-server:
+  auth-service: { branch: develop }
+  worker:
+
+  # Frontend
+  web-app:
+  admin-dashboard:
+
+  # Infrastructure
+  deploy-configs:
+  shared-protos:
+
+  # External dependency from a different remote
+  upstream-lib: { remote: upstream, branch: stable }
+
+  # Full URL override
+  custom-tool: { url: git@custom.host:org/repo.git }
+
+# ---------------------------------------------------------------------------
+# exclude
+# ---------------------------------------------------------------------------
+# Repos listed here are never cloned or shown in commands.
+# This is useful for maintaining a complete catalog of all repos in an org
+# while marking inactive/legacy ones.
+#
+# A repo in both repos: and exclude: is treated as active (repos wins).
+# Inline comments are useful for recording why a repo was excluded.
+
+exclude:
+  - legacy-api          # replaced by api-server
+  - old-frontend        # replaced by web-app
+  - intern-project-2024 # one-off
+
+# ---------------------------------------------------------------------------
+# Local overrides (manifest.local.yml)
+# ---------------------------------------------------------------------------
+# Create manifest.local.yml alongside this file for personal customization.
+# It is merged on top of this manifest and should be gitignored.
+#
+# Merge rules:
+#   remotes:  union (local wins on name conflict)
+#   repos:    union (local wins on name conflict, un-excludes repos)
+#   exclude:  union (additive)
+#   groups:   local replaces same-name groups, new groups added
+#   root:     local overrides if set
+#   workspace: local overrides if set
+#
+# Example manifest.local.yml:
+#
+#   remotes:
+#     my-fork: git@github.com:myuser
+#
+#   repos:
+#     legacy-api:                              # un-exclude for local work
+#     my-experiment: { remote: my-fork }
+#
+#   exclude:
+#     - worker                                 # I don't need this locally
+#
+#   groups:
+#     my-project: [api-server, my-experiment]
