@@ -29,8 +29,8 @@ make install
 ```
 
 GitHub Actions builds per-platform artifacts for pushes, pull requests, and tags.
-Tag builds stamp the binaries with the tag version so downloaded artifacts and
-`ws version` agree.
+Tag builds stamp the binaries with the tag version, publish a GitHub Release,
+and keep downloaded artifacts aligned with `ws version`.
 
 ## Workspace Repo Model
 

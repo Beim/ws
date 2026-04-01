@@ -69,14 +69,16 @@ jobs:
           fi
           if [[ "${{ matrix.goos }}" == "windows" ]]; then
             binary="ws.exe"
+            archive="ws_${version#v}_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
           else
             binary="ws"
+            archive="ws_${version#v}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "commit=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
-          echo "artifact=ws_${version#v}_${{ matrix.goos }}_${{ matrix.goarch }}" >> "${GITHUB_OUTPUT}"
           echo "binary=${binary}" >> "${GITHUB_OUTPUT}"
+          echo "archive=${archive}" >> "${GITHUB_OUTPUT}"
 
       - name: Build binary
         env:
@@ -86,14 +88,55 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
           COMMIT: ${{ steps.meta.outputs.commit }}
           DATE: ${{ steps.meta.outputs.date }}
-          OUTPUT: dist/${{ steps.meta.outputs.artifact }}/${{ steps.meta.outputs.binary }}
+          OUTPUT: dist/build/${{ matrix.goos }}_${{ matrix.goarch }}/${{ steps.meta.outputs.binary }}
         run: |
           mkdir -p "$(dirname "${OUTPUT}")"
           make build
 
+      - name: Package archive
+        env:
+          BINARY: ${{ steps.meta.outputs.binary }}
+          ARCHIVE: ${{ steps.meta.outputs.archive }}
+          BUILD_DIR: dist/build/${{ matrix.goos }}_${{ matrix.goarch }}
+        run: |
+          mkdir -p dist/release
+          if [[ "${BINARY}" == *.exe ]]; then
+            (
+              cd "${BUILD_DIR}"
+              zip -q "../../release/${ARCHIVE}" "${BINARY}"
+            )
+          else
+            tar -C "${BUILD_DIR}" -czf "dist/release/${ARCHIVE}" "${BINARY}"
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.meta.outputs.artifact }}
-          path: dist/${{ steps.meta.outputs.artifact }}/
+          name: ${{ steps.meta.outputs.archive }}
+          path: dist/release/${{ steps.meta.outputs.archive }}
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ws_*
+          path: dist/release
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist/release
+          sha256sum * > checksums.txt
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/release/*
+          generate_release_notes: true
