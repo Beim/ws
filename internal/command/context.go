@@ -10,7 +10,7 @@ import (
 )
 
 const contextFile = ".ws-context"
-const reposDir = "repos"
+const scopeDir = ".scope"
 
 // SetContext sets the default filter, regenerates the VS Code workspace,
 // and updates the repos/ symlink directory to match.
@@ -66,7 +66,7 @@ func ShowContext(m *manifest.Manifest, wsHome string) {
 // This constrains what filesystem-based agents (CLI tools, Claude Code) can see.
 func syncReposDir(m *manifest.Manifest, wsHome, parentDir, filter string) error {
 	repos := m.ResolveFilter(filter)
-	dir := filepath.Join(wsHome, reposDir)
+	dir := filepath.Join(wsHome, scopeDir)
 
 	// Remove existing symlinks (but not non-symlink entries, for safety)
 	if entries, err := os.ReadDir(dir); err == nil {
@@ -98,6 +98,6 @@ func syncReposDir(m *manifest.Manifest, wsHome, parentDir, filter string) error 
 		}
 	}
 
-	fmt.Printf("repos/ updated (%d symlinks)\n", len(repos))
+	fmt.Printf(".scope/ updated (%d symlinks)\n", len(repos))
 	return nil
 }
