@@ -17,6 +17,9 @@ The intended model is simple:
 go install github.com/dtuit/ws/cmd/ws@latest
 ```
 
+That install path now relies on Go's embedded module metadata, so `ws version`
+reports the resolved module version instead of always falling back to `dev`.
+
 Or build from source:
 
 ```bash
@@ -24,6 +27,10 @@ git clone git@github.com:dtuit/ws.git
 cd ws
 make install
 ```
+
+GitHub Actions builds per-platform artifacts for pushes, pull requests, and tags.
+Tag builds stamp the binaries with the tag version so downloaded artifacts and
+`ws version` agree.
 
 ## Workspace Repo Model
 

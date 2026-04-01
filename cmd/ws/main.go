@@ -7,9 +7,8 @@ import (
 
 	"github.com/dtuit/ws/internal/command"
 	"github.com/dtuit/ws/internal/manifest"
+	"github.com/dtuit/ws/internal/version"
 )
-
-var version = "dev"
 
 func main() {
 	args := os.Args[1:]
@@ -55,7 +54,7 @@ func main() {
 		return
 	}
 	if cmd == "version" || cmd == "--version" {
-		fmt.Println("ws " + version)
+		fmt.Println(version.String())
 		return
 	}
 
