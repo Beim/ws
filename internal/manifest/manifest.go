@@ -14,11 +14,13 @@ import (
 type Manifest struct {
 	Root          string              // directory where repos live, relative to manifest dir (default "..")
 	Workspace     string              // VS Code workspace filename (default "ws.code-workspace")
+	Worktrees     bool                // default worktree expansion behavior for supported commands
 	Remotes       map[string]string   // name → URL prefix ("default" is the fallback)
 	DefaultBranch string              // default branch for all repos
 	Groups        map[string][]string // group name → ordered repo names
 	Repos         map[string]RepoConfig
 	Exclude       []string
+	worktreesSet  bool
 }
 
 // RepoConfig holds per-repo overrides.
@@ -42,6 +44,7 @@ type RepoInfo struct {
 type rawManifest struct {
 	Root      string                       `yaml:"root"`      // where repos live (default "..")
 	Workspace string                       `yaml:"workspace"` // VS Code workspace filename
+	Worktrees *bool                        `yaml:"worktrees"` // default worktree behavior
 	Remotes   map[string]string            `yaml:"remotes"`   // named remotes
 	Branch    string                       `yaml:"branch"`
 	Groups    map[string][]string          `yaml:"groups"`
@@ -89,6 +92,10 @@ func Parse(data []byte) (*Manifest, error) {
 	}
 	if m.Workspace == "" {
 		m.Workspace = "ws.code-workspace"
+	}
+	if raw.Worktrees != nil {
+		m.Worktrees = *raw.Worktrees
+		m.worktreesSet = true
 	}
 	if m.DefaultBranch == "" {
 		m.DefaultBranch = "master"
@@ -173,6 +180,10 @@ func (m *Manifest) MergeLocal(path string) error {
 	// Workspace: local overrides if explicitly set
 	if local.Workspace != "ws.code-workspace" {
 		m.Workspace = local.Workspace
+	}
+	if local.worktreesSet {
+		m.Worktrees = local.Worktrees
+		m.worktreesSet = true
 	}
 
 	// Remotes: union, local wins on conflict

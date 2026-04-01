@@ -34,16 +34,16 @@ func Super(m *manifest.Manifest, wsHome, filter string, cmdArgs []string, includ
 
 // ParseSuperArgs disambiguates the filter and command arguments.
 // Leading ws flags are parsed before the command starts.
-func ParseSuperArgs(m *manifest.Manifest, args []string) (filter string, cmdArgs []string, includeWorktrees bool) {
+func ParseSuperArgs(m *manifest.Manifest, args []string) (filter string, cmdArgs []string, worktrees WorktreesOverride) {
 	for i, arg := range args {
 		switch {
-		case arg == "--worktrees" || arg == "-W" || arg == "-t":
-			includeWorktrees = true
+		case isWorktreesFlag(arg):
+			worktrees, _ = ParseWorktreesFlag(arg)
 		case filter == "" && isFilterToken(m, arg):
 			filter = arg
 		default:
-			return filter, args[i:], includeWorktrees
+			return filter, args[i:], worktrees
 		}
 	}
-	return filter, nil, includeWorktrees
+	return filter, nil, worktrees
 }

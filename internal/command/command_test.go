@@ -18,7 +18,7 @@ func TestBuildWorkspaceJSON(t *testing.T) {
 		{Name: "repo-b", Path: "/workspace/repos/repo-b"},
 	}
 
-	out, err := BuildWorkspaceJSON(repos, "/workspace")
+	out, err := BuildWorkspaceJSON(repos, "/workspace", false)
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
@@ -46,7 +46,7 @@ func TestBuildWorkspaceJSON(t *testing.T) {
 }
 
 func TestBuildWorkspaceJSON_EmptyRepos(t *testing.T) {
-	out, err := BuildWorkspaceJSON(nil, "/workspace")
+	out, err := BuildWorkspaceJSON(nil, "/workspace", false)
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
@@ -62,7 +62,7 @@ func TestBuildWorkspaceJSON_PerRepoRoots(t *testing.T) {
 		{Name: "external-repo", Path: "/opt/external/external-repo"},
 	}
 
-	out, err := BuildWorkspaceJSON(repos, "/workspace")
+	out, err := BuildWorkspaceJSON(repos, "/workspace", false)
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
@@ -95,7 +95,7 @@ func TestBuildWorkspaceJSON_IncludesGitWorktrees(t *testing.T) {
 		{Name: "repo", Path: repoDir},
 	}
 
-	out, err := BuildWorkspaceJSON(repos, wsHome)
+	out, err := BuildWorkspaceJSON(repos, wsHome, true)
 	require.NoError(t, err)
 
 	var ws map[string]interface{}
@@ -125,10 +125,10 @@ repos:
 `))
 	require.NoError(t, err)
 
-	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, []string{"ai", "git", "status"})
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"ai", "git", "status"})
 	assert.Equal(t, "ai", filter)
 	assert.Equal(t, []string{"git", "status"}, cmdArgs)
-	assert.False(t, includeWorktrees)
+	assert.False(t, worktrees.Set)
 }
 
 func TestParseSuperArgs_WithoutGroup(t *testing.T) {
@@ -140,10 +140,10 @@ repos:
 `))
 	require.NoError(t, err)
 
-	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, []string{"git", "status"})
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"git", "status"})
 	assert.Equal(t, "", filter)
 	assert.Equal(t, []string{"git", "status"}, cmdArgs)
-	assert.False(t, includeWorktrees)
+	assert.False(t, worktrees.Set)
 }
 
 func TestParseSuperArgs_WorktreesBeforeFilter(t *testing.T) {
@@ -157,10 +157,11 @@ repos:
 `))
 	require.NoError(t, err)
 
-	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, []string{"--worktrees", "ai", "git", "status"})
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"--worktrees", "ai", "git", "status"})
 	assert.Equal(t, "ai", filter)
 	assert.Equal(t, []string{"git", "status"}, cmdArgs)
-	assert.True(t, includeWorktrees)
+	assert.True(t, worktrees.Set)
+	assert.True(t, worktrees.Value)
 }
 
 func TestParseSuperArgs_ShorthandWorktreesBeforeFilter(t *testing.T) {
@@ -174,10 +175,11 @@ repos:
 `))
 	require.NoError(t, err)
 
-	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, []string{"-t", "ai", "git", "status"})
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"-t", "ai", "git", "status"})
 	assert.Equal(t, "ai", filter)
 	assert.Equal(t, []string{"git", "status"}, cmdArgs)
-	assert.True(t, includeWorktrees)
+	assert.True(t, worktrees.Set)
+	assert.True(t, worktrees.Value)
 }
 
 func TestParseSuperArgs_WorktreesAfterFilter(t *testing.T) {
@@ -191,10 +193,29 @@ repos:
 `))
 	require.NoError(t, err)
 
-	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, []string{"ai", "--worktrees", "git", "status"})
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"ai", "--worktrees", "git", "status"})
 	assert.Equal(t, "ai", filter)
 	assert.Equal(t, []string{"git", "status"}, cmdArgs)
-	assert.True(t, includeWorktrees)
+	assert.True(t, worktrees.Set)
+	assert.True(t, worktrees.Value)
+}
+
+func TestParseSuperArgs_NoWorktreesAfterFilter(t *testing.T) {
+	m, err := manifest.Parse([]byte(`
+remotes:
+  default: git@example.com
+groups:
+  ai: [repo-a]
+repos:
+  repo-a:
+`))
+	require.NoError(t, err)
+
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"ai", "--no-worktrees", "git", "status"})
+	assert.Equal(t, "ai", filter)
+	assert.Equal(t, []string{"git", "status"}, cmdArgs)
+	assert.True(t, worktrees.Set)
+	assert.False(t, worktrees.Value)
 }
 
 func TestParseSuperArgs_Empty(t *testing.T) {
@@ -205,10 +226,10 @@ repos:
   repo-a:
 `))
 
-	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, nil)
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, nil)
 	assert.Equal(t, "", filter)
 	assert.Nil(t, cmdArgs)
-	assert.False(t, includeWorktrees)
+	assert.False(t, worktrees.Set)
 }
 
 func TestParseSuperArgs_AllFilter(t *testing.T) {
@@ -222,10 +243,10 @@ repos:
 `))
 	require.NoError(t, err)
 
-	filter, cmdArgs, includeWorktrees := ParseSuperArgs(m, []string{"all", "git", "status"})
+	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"all", "git", "status"})
 	assert.Equal(t, "all", filter)
 	assert.Equal(t, []string{"git", "status"}, cmdArgs)
-	assert.False(t, includeWorktrees)
+	assert.False(t, worktrees.Set)
 }
 
 func TestCompleteTopLevel(t *testing.T) {
@@ -246,6 +267,7 @@ repos:
 	assert.Contains(t, result.Values, "repo-a")
 	assert.Contains(t, result.Values, "--workspace")
 	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.False(t, result.FallbackCommands)
 }
@@ -301,6 +323,7 @@ repos:
 	result := Complete(m, []string{"code", ""}, 1)
 	assert.Contains(t, result.Values, "-W")
 	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "ai")
 }
@@ -335,6 +358,7 @@ repos:
 	result := Complete(m, []string{"ll", ""}, 1)
 	assert.Contains(t, result.Values, "-t")
 	assert.Contains(t, result.Values, "-W")
+	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "ai")
 }
@@ -352,6 +376,7 @@ repos:
 	assert.Contains(t, result.Values, "--all")
 	assert.Contains(t, result.Values, "-a")
 	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.Contains(t, result.Values, "--worktrees")
 }
 
@@ -367,6 +392,21 @@ repos:
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"--", "--worktrees", "gi"}, 2)
+	assert.True(t, result.FallbackCommands)
+}
+
+func TestCompletePassthroughAfterNoWorktreesFallsBackToCommands(t *testing.T) {
+	m, err := manifest.Parse([]byte(`
+remotes:
+  default: git@example.com
+groups:
+  ai: [repo-a]
+repos:
+  repo-a:
+`))
+	require.NoError(t, err)
+
+	result := Complete(m, []string{"--", "--no-worktrees", "gi"}, 2)
 	assert.True(t, result.FallbackCommands)
 }
 
@@ -398,6 +438,7 @@ repos:
 
 	result := Complete(m, []string{"context", ""}, 1)
 	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "add")
 	assert.Contains(t, result.Values, "none")
@@ -436,6 +477,7 @@ repos:
 	assert.Contains(t, result.Values, "ai")
 	assert.Contains(t, result.Values, "repo-a")
 	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.NotContains(t, result.Values, "reset")
 }
 
@@ -505,8 +547,8 @@ repos:
 `))
 	require.NoError(t, err)
 
-	require.NoError(t, AddContext(m, wsHome, "backend"))
-	require.NoError(t, AddContext(m, wsHome, "repo-c,frontend"))
+	require.NoError(t, AddContext(m, wsHome, "backend", false))
+	require.NoError(t, AddContext(m, wsHome, "repo-c,frontend", false))
 
 	data, err := os.ReadFile(filepath.Join(wsHome, contextFile))
 	require.NoError(t, err)

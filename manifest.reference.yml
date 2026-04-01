@@ -53,6 +53,29 @@ root: ..
 workspace: ws.code-workspace
 
 # ---------------------------------------------------------------------------
+# worktrees
+# ---------------------------------------------------------------------------
+# Default worktree mode for supported commands.
+# Default: false
+#
+# When true, these commands include linked git worktrees by default:
+#   ws list
+#   ws ll
+#   ws pull
+#   ws code
+#   ws context
+#   ws <command...>
+#
+# Use local CLI overrides when needed:
+#   ws -t ll backend
+#   ws --no-worktrees code backend
+#
+# Recommendation:
+#   Put personal preference here in manifest.local.yml, not shared manifest.yml.
+
+worktrees: false
+
+# ---------------------------------------------------------------------------
 # groups
 # ---------------------------------------------------------------------------
 # Named sets of repos. Used for filtering across all commands:
@@ -144,8 +167,11 @@ exclude:
 #   groups:   local replaces same-name groups, new groups added
 #   root:     local overrides if set
 #   workspace: local overrides if set
+#   worktrees: local overrides if set
 #
 # Example manifest.local.yml:
+#
+#   worktrees: true
 #
 #   remotes:
 #     my-fork: git@github.com:myuser

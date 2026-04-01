@@ -188,26 +188,26 @@ Operate from the workspace repo. `ws` finds the workspace by:
 Core commands:
 
 ```text
-ws ll [filter] [-t|--worktrees]
+ws ll [filter] [-t|--worktrees|--no-worktrees]
                           Dashboard: branch, dirty state, last commit
-ws list [--all] [-t|--worktrees]
+ws list [--all] [-t|--worktrees|--no-worktrees]
                           Show repos in the manifest
 ws setup [filter]         Clone missing repos
 ws fetch [filter]         Fetch all repos in scope
-ws pull [filter] [-t|--worktrees]
+ws pull [filter] [-t|--worktrees|--no-worktrees]
                           Pull manifest checkouts or all discovered worktrees
-ws context [-t|--worktrees] [filter]
+ws context [-t|--worktrees|--no-worktrees] [filter]
                           Persist the default filter
-ws code [-t|--worktrees] [filter]
+ws code [-t|--worktrees|--no-worktrees] [filter]
                           Generate the VS Code workspace file
-ws context add [-t|--worktrees] <filter>
+ws context add [-t|--worktrees|--no-worktrees] <filter>
                           Extend the current context
 ws cd [repo] [--worktree <selector>]
                           Print repo path (or workspace root)
 ws init                   Emit shell integration and completion
 ```
 
-`ws code` is git-worktree aware. If a selected repo has sibling worktrees, they are added as separate folders so both checkouts appear in the VS Code Explorer. `-t` is accepted as a short explicit alias for `ws code --worktrees`.
+Supported commands share one worktree mode. Set `worktrees: true` in `manifest.local.yml` if you want `list`, `ll`, `pull`, `code`, `context`, and fan-out commands to include linked worktrees by default. Use `-t` to force that on for one command, or `--no-worktrees` to force it off.
 
 Any unrecognized command is executed across repos automatically:
 
@@ -234,15 +234,16 @@ If you want a repo included in default operations, put it in at least one group.
 
 ## Worktrees
 
-`ws` discovers linked git worktrees at runtime from the manifest checkout. They are not stored in `manifest.yml`.
+`ws` discovers linked git worktrees at runtime from the manifest checkout. They are not stored as individual repos in `manifest.yml`.
 
-- Default commands still target the manifest checkout for each repo.
-- `ws list` shows a `WT` count for each repo; `ws list -t` or `ws list --worktrees` expands to one row per checkout.
-- `ws ll -t`, `ws pull -t`, and `ws -t <command...>` expand operations to all discovered worktrees.
-- `ws context -t` and `ws code -t` are accepted as explicit worktree-aware forms for consistency.
+- Set `worktrees: true` in `manifest.local.yml` to make worktree-aware behavior the default across `list`, `ll`, `pull`, `code`, `context`, and fan-out commands.
+- Without that setting, commands default to the manifest checkout for each repo.
+- `ws list` shows a `WT` count for each repo; worktree mode expands it to one row per checkout.
+- `ws ll`, `ws pull`, `ws code`, `ws context`, and `ws <command...>` follow the same worktree mode instead of each command behaving differently.
+- Use `-t` or `--worktrees` to enable worktree mode for one command, or `--no-worktrees` to disable it for one command.
 - `ws cd api-server --worktree feature/auth` resolves a linked worktree by unique branch, path basename, or exact path.
 - `ws fetch` remains repo-scoped and runs once per manifest repo.
-- `ws code` always includes sibling worktrees in the generated workspace, and `ws code -t backend` is accepted as an explicit form.
+- In worktree mode, `ws code` includes sibling worktrees in the generated workspace so both checkouts appear in the VS Code Explorer.
 
 ## Context And Agents
 
@@ -315,6 +316,7 @@ Field summary:
 - `branch`: default branch for repos that do not override it
 - `root`: where repos live; relative to the manifest directory or absolute
 - `workspace`: filename for the generated VS Code workspace
+- `worktrees`: default worktree mode for supported commands
 - `groups`: named repo sets used for filters
 - `repos`: active repos and per-repo overrides
 - `exclude`: catalog entries you do not want in normal operations
@@ -326,6 +328,8 @@ Start from the full reference file at [manifest.reference.yml](manifest.referenc
 Use `manifest.local.yml` for personal changes you do not want to commit.
 
 ```yaml
+worktrees: true
+
 remotes:
   my-fork: git@github.com:myuser
 
@@ -345,7 +349,7 @@ Merge rules:
 - `repos`: union, local wins on name conflict
 - `exclude`: additive
 - `groups`: local replaces same-name groups, adds new ones
-- `root` and `workspace`: local overrides when set
+- `root`, `workspace`, and `worktrees`: local overrides when set
 
 ## Configuration
 

@@ -66,7 +66,8 @@ func Complete(m *manifest.Manifest, words []string, current int) CompletionResul
 		}
 		return CompletionResult{}
 	case "list":
-		return finalizeCompletion([]string{"--all", "-a", "-t", "--worktrees", "-W"}, currentWord, false)
+		values := append([]string{"--all", "-a"}, worktreesFlagSuggestions()...)
+		return finalizeCompletion(values, currentWord, false)
 	case "setup":
 		values := append([]string{"--install-shell"}, filterSuggestions(m)...)
 		return finalizeCompletion(values, currentWord, false)
@@ -214,7 +215,7 @@ func firstCommandIndex(words []string) int {
 				return len(words)
 			}
 			i++
-		case "-t", "-W", "--worktrees":
+		case "-t", "-W", "--worktrees", "--no-worktrees":
 			continue
 		default:
 			return i
@@ -251,7 +252,7 @@ func matchPrefix(values []string, currentWord string) []string {
 }
 
 func globalFlagSuggestions() []string {
-	return []string{"-w", "--workspace", "-t", "-W", "--worktrees", "-h", "--help", "--version"}
+	return []string{"-w", "--workspace", "-t", "-W", "--worktrees", "--no-worktrees", "-h", "--help", "--version"}
 }
 
 func filterSuggestions(m *manifest.Manifest) []string {
@@ -298,14 +299,6 @@ func isFilterToken(m *manifest.Manifest, token string) bool {
 		return false
 	}
 	return m.IsGroupOrRepo(token)
-}
-
-func isWorktreesFlag(token string) bool {
-	return token == "-t" || token == "-W" || token == "--worktrees"
-}
-
-func worktreesFlagSuggestions() []string {
-	return []string{"-t", "-W", "--worktrees"}
 }
 
 func hasFlag(flags []string, token string) bool {

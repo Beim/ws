@@ -48,6 +48,7 @@ func TestParse(t *testing.T) {
 	assert.Len(t, m.Groups["frontend"], 2)
 	assert.Len(t, m.Repos, 7)
 	assert.Len(t, m.Exclude, 2)
+	assert.False(t, m.Worktrees)
 }
 
 func TestParse_BareRepoEntry(t *testing.T) {
@@ -183,6 +184,8 @@ func TestMergeLocal(t *testing.T) {
 
 	// Write local override
 	localYAML := `
+worktrees: true
+
 remotes:
   my-fork: git@github.com:darren
 
@@ -219,6 +222,7 @@ groups:
 	assert.Equal(t, []string{"api-server"}, m.Groups["backend"])
 	assert.Equal(t, []string{"legacy-api", "my-experiment"}, m.Groups["my-group"])
 	assert.Equal(t, []string{"web-app", "admin-dashboard"}, m.Groups["frontend"]) // preserved
+	assert.True(t, m.Worktrees)
 
 	// legacy-api is in both repos and exclude - repos wins, it's active
 	active := m.ActiveRepos()
@@ -244,6 +248,39 @@ repos:
 	m, err := Parse([]byte(yaml))
 	require.NoError(t, err)
 	assert.Equal(t, "master", m.DefaultBranch) // default when not specified
+}
+
+func TestParse_WorktreesExplicitTrue(t *testing.T) {
+	yaml := `
+worktrees: true
+remotes:
+  default: git@example.com
+repos:
+  my-repo:
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	assert.True(t, m.Worktrees)
+}
+
+func TestMergeLocal_WorktreesCanDisable(t *testing.T) {
+	dir := t.TempDir()
+	mainYAML := `
+worktrees: true
+remotes:
+  default: git@example.com
+repos:
+  my-repo:
+`
+	localYAML := `
+worktrees: false
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.yml"), []byte(mainYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.local.yml"), []byte(localYAML), 0644))
+
+	m, err := LoadWithLocal(dir)
+	require.NoError(t, err)
+	assert.False(t, m.Worktrees)
 }
 
 func TestParse_RejectsPathTraversalRepoName(t *testing.T) {

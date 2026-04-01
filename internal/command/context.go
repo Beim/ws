@@ -14,7 +14,7 @@ const scopeDir = ".scope"
 
 // SetContext sets the default filter, regenerates the VS Code workspace,
 // and updates the repos/ symlink directory to match.
-func SetContext(m *manifest.Manifest, wsHome, filter string) error {
+func SetContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bool) error {
 	path := filepath.Join(wsHome, contextFile)
 	filter, err := normalizeContextFilter(m, filter)
 	if err != nil {
@@ -27,7 +27,7 @@ func SetContext(m *manifest.Manifest, wsHome, filter string) error {
 		if err := syncReposDir(m, wsHome, ""); err != nil {
 			return err
 		}
-		return Code(m, wsHome, "")
+		return Code(m, wsHome, "", includeWorktrees)
 	}
 
 	repos := m.ResolveFilter(filter, wsHome)
@@ -43,18 +43,18 @@ func SetContext(m *manifest.Manifest, wsHome, filter string) error {
 	if err := syncReposDir(m, wsHome, filter); err != nil {
 		return err
 	}
-	return Code(m, wsHome, filter)
+	return Code(m, wsHome, filter, includeWorktrees)
 }
 
 // AddContext extends the current context with more groups or repos.
 // If no context is set, it behaves like SetContext.
-func AddContext(m *manifest.Manifest, wsHome, filter string) error {
+func AddContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bool) error {
 	addition, err := normalizeContextFilter(m, filter)
 	if err != nil {
 		return err
 	}
 	if addition == "" {
-		return fmt.Errorf("usage: ws context add <filter>")
+		return fmt.Errorf("usage: ws context add [-t|--worktrees|--no-worktrees] <filter>")
 	}
 
 	currentRaw := GetContext(wsHome)
@@ -64,7 +64,7 @@ func AddContext(m *manifest.Manifest, wsHome, filter string) error {
 	}
 
 	merged := mergeContextFilters(current, addition)
-	return SetContext(m, wsHome, merged)
+	return SetContext(m, wsHome, merged, includeWorktrees)
 }
 
 // GetContext reads the current context filter, or "" if none is set.

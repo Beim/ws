@@ -18,7 +18,7 @@ func main() {
 	args := os.Args[1:]
 	cmd := "help"
 	var wsHomeOverride string
-	globalWorktrees := false
+	var globalWorktrees command.WorktreesOverride
 
 	// Parse global flags before command
 	for len(args) > 0 {
@@ -26,8 +26,8 @@ func main() {
 		case (args[0] == "-w" || args[0] == "--workspace") && len(args) > 1:
 			wsHomeOverride = args[1]
 			args = args[2:]
-		case args[0] == "--worktrees" || args[0] == "-W" || args[0] == "-t":
-			globalWorktrees = true
+		case isWorktreesOverrideToken(args[0]):
+			globalWorktrees, _ = command.ParseWorktreesFlag(args[0])
 			args = args[1:]
 		default:
 			goto dispatch
@@ -73,22 +73,24 @@ dispatch:
 
 	// Context: use as default filter when no explicit filter is given
 	ctx := command.GetContext(wsHome)
+	defaultWorktrees := m.Worktrees
 
 	switch cmd {
 	case "context":
-		action, filter, err := parseContextArgs(args)
+		action, filter, worktreesOverride, err := parseContextArgs(args)
 		if err != nil {
 			fatal(err)
 		}
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, worktreesOverride)
 		switch action {
 		case "show":
 			command.ShowContext(m, wsHome)
 		case "set":
-			if err := command.SetContext(m, wsHome, filter); err != nil {
+			if err := command.SetContext(m, wsHome, filter, includeWorktrees); err != nil {
 				fatal(err)
 			}
 		case "add":
-			if err := command.AddContext(m, wsHome, filter); err != nil {
+			if err := command.AddContext(m, wsHome, filter, includeWorktrees); err != nil {
 				fatal(err)
 			}
 		}
@@ -135,29 +137,32 @@ dispatch:
 		}
 
 	case "code":
-		filter, err := parseCodeArgs(args, ctx)
+		filter, worktreesOverride, err := parseCodeArgs(args, ctx)
 		if err != nil {
 			fatal(err)
 		}
-		if err := command.Code(m, wsHome, filter); err != nil {
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, worktreesOverride)
+		if err := command.Code(m, wsHome, filter, includeWorktrees); err != nil {
 			fatal(err)
 		}
 
 	case "list":
 		showAll := false
 		args, showAll = stripBoolFlag(args, "--all", "-a")
-		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W", "-t")
+		args, localWorktrees := command.StripWorktreesFlags(args)
 		if len(args) > 0 {
 			fatal(fmt.Errorf("list does not take a filter"))
 		}
-		if err := command.List(m, wsHome, showAll, globalWorktrees || localWorktrees); err != nil {
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
+		if err := command.List(m, wsHome, showAll, includeWorktrees); err != nil {
 			fatal(err)
 		}
 
 	case "ll":
-		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W", "-t")
+		args, localWorktrees := command.StripWorktreesFlags(args)
 		filter := filterArg(args, ctx)
-		if err := command.LL(m, wsHome, filter, globalWorktrees || localWorktrees); err != nil {
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
+		if err := command.LL(m, wsHome, filter, includeWorktrees); err != nil {
 			fatal(err)
 		}
 
@@ -168,9 +173,10 @@ dispatch:
 		}
 
 	case "pull":
-		args, localWorktrees := stripBoolFlag(args, "--worktrees", "-W", "-t")
+		args, localWorktrees := command.StripWorktreesFlags(args)
 		filter := filterArg(args, ctx)
-		if err := command.Pull(m, wsHome, filter, globalWorktrees || localWorktrees); err != nil {
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
+		if err := command.Pull(m, wsHome, filter, includeWorktrees); err != nil {
 			fatal(err)
 		}
 
@@ -181,10 +187,11 @@ dispatch:
 			filter = ctx
 		}
 		if len(cmdArgs) == 0 {
-			fmt.Fprintln(os.Stderr, "Usage: ws -- [-t|--worktrees] [filter] <command...>")
+			fmt.Fprintln(os.Stderr, "Usage: ws -- [-t|--worktrees|--no-worktrees] [filter] <command...>")
 			os.Exit(1)
 		}
-		if err := command.Super(m, wsHome, filter, cmdArgs, globalWorktrees || localWorktrees); err != nil {
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
+		if err := command.Super(m, wsHome, filter, cmdArgs, includeWorktrees); err != nil {
 			fatal(err)
 		}
 
@@ -200,7 +207,8 @@ dispatch:
 			usage()
 			os.Exit(1)
 		}
-		if err := command.Super(m, wsHome, filter, cmdArgs, globalWorktrees || localWorktrees); err != nil {
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
+		if err := command.Super(m, wsHome, filter, cmdArgs, includeWorktrees); err != nil {
 			fatal(err)
 		}
 	}
@@ -357,52 +365,39 @@ func filterArg(args []string, ctx string) string {
 	return ""
 }
 
-func parseCodeArgs(args []string, ctx string) (string, error) {
-	var filterArgs []string
+func parseCodeArgs(args []string, ctx string) (string, command.WorktreesOverride, error) {
+	filterArgs, worktreesOverride := command.StripWorktreesFlags(args)
 
-	for _, arg := range args {
-		switch arg {
-		case "-t", "-W", "--worktrees":
-			// Worktree inclusion is the current default for ws code.
-		default:
-			if strings.HasPrefix(arg, "-") {
-				return "", fmt.Errorf("unknown code flag: %s", arg)
-			}
-			filterArgs = append(filterArgs, arg)
+	if len(filterArgs) > 1 {
+		return "", command.WorktreesOverride{}, fmt.Errorf("usage: ws code [-t|--worktrees|--no-worktrees] [filter]")
+	}
+	for _, arg := range filterArgs {
+		if strings.HasPrefix(arg, "-") {
+			return "", command.WorktreesOverride{}, fmt.Errorf("unknown code flag: %s", arg)
 		}
 	}
 
-	if len(filterArgs) > 1 {
-		return "", fmt.Errorf("usage: ws code [-t|--worktrees] [filter]")
-	}
-
-	return filterArg(filterArgs, ctx), nil
+	return filterArg(filterArgs, ctx), worktreesOverride, nil
 }
 
-func parseContextArgs(args []string) (action string, filter string, err error) {
-	var filtered []string
-	for _, arg := range args {
-		switch arg {
-		case "-t", "-W", "--worktrees":
-			// Worktree inclusion is the current default for context-generated workspaces.
-		default:
-			if strings.HasPrefix(arg, "-") {
-				return "", "", fmt.Errorf("unknown context flag: %s", arg)
-			}
-			filtered = append(filtered, arg)
+func parseContextArgs(args []string) (action string, filter string, worktreesOverride command.WorktreesOverride, err error) {
+	filtered, worktreesOverride := command.StripWorktreesFlags(args)
+	for _, arg := range filtered {
+		if strings.HasPrefix(arg, "-") {
+			return "", "", command.WorktreesOverride{}, fmt.Errorf("unknown context flag: %s", arg)
 		}
 	}
 
 	if len(filtered) == 0 {
-		return "show", "", nil
+		return "show", "", worktreesOverride, nil
 	}
 	if filtered[0] == "add" {
 		if len(filtered) == 1 {
-			return "", "", fmt.Errorf("usage: ws context add [-t|--worktrees] <filter>")
+			return "", "", command.WorktreesOverride{}, fmt.Errorf("usage: ws context add [-t|--worktrees|--no-worktrees] <filter>")
 		}
-		return "add", strings.Join(filtered[1:], ","), nil
+		return "add", strings.Join(filtered[1:], ","), worktreesOverride, nil
 	}
-	return "set", strings.Join(filtered, ","), nil
+	return "set", strings.Join(filtered, ","), worktreesOverride, nil
 }
 
 func findWorkspaceHome(override string) (string, error) {
@@ -454,21 +449,21 @@ func usage() {
 
 Commands:
   init                   Emit shell integration and completion
-  ll [filter] [-t|--worktrees]
+  ll [filter] [-t|--worktrees|--no-worktrees]
                          Dashboard: branch, dirty, last commit
   cd [repo] [--worktree <selector>]
                          Print repo path (no arg = workspace root)
   setup [filter]         Clone missing repos
-  code [-t|--worktrees] [filter]
+  code [-t|--worktrees|--no-worktrees] [filter]
                          Generate VS Code workspace and open it
-  list [--all] [-t|--worktrees]
+  list [--all] [-t|--worktrees|--no-worktrees]
                          Show repos in manifest (--all includes excluded)
   fetch [filter]         Fetch all repos
-  pull [filter] [-t|--worktrees]
+  pull [filter] [-t|--worktrees|--no-worktrees]
                          Pull manifest checkouts or all discovered worktrees
-  context [-t|--worktrees] [filter]
+  context [-t|--worktrees|--no-worktrees] [filter]
                          Set default filter (no arg = show, "none" = clear)
-  context add [-t|--worktrees] <filter>
+  context add [-t|--worktrees|--no-worktrees] <filter>
                          Add groups or repos to the existing context
 
 Any unrecognized command is run across repos:
@@ -479,7 +474,7 @@ Any unrecognized command is run across repos:
   ws ls -la              Any command, not just git
 
 Use -- to escape built-in names:
-  ws -- [-t|--worktrees] fetch data.json
+  ws -- [-t|--worktrees|--no-worktrees] fetch data.json
                          Run "fetch data.json" (not git fetch)
 
 Filters:
@@ -512,7 +507,7 @@ func completionWorkspaceOverride(words []string) string {
 				return ""
 			}
 			return strings.TrimSpace(words[i+1])
-		case "-t", "-W", "--worktrees":
+		case "-t", "-W", "--worktrees", "--no-worktrees":
 			continue
 		default:
 			if !strings.HasPrefix(words[i], "-") {
@@ -526,4 +521,17 @@ func completionWorkspaceOverride(words []string) string {
 func fatal(err error) {
 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	os.Exit(1)
+}
+
+func isWorktreesOverrideToken(token string) bool {
+	_, ok := command.ParseWorktreesFlag(token)
+	return ok
+}
+
+func resolveWorktreesOverride(defaultValue bool, overrides ...command.WorktreesOverride) bool {
+	value := defaultValue
+	for _, override := range overrides {
+		value = override.Resolve(value)
+	}
+	return value
 }

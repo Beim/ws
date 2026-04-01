@@ -12,12 +12,12 @@ import (
 )
 
 // Code generates a VS Code workspace file and opens it.
-func Code(m *manifest.Manifest, wsHome, filter string) error {
+func Code(m *manifest.Manifest, wsHome, filter string, includeWorktrees bool) error {
 	repos := m.ResolveFilter(filter, wsHome)
 
 	wsFile := filepath.Join(wsHome, m.Workspace)
 
-	ws := buildWorkspace(repos, wsHome)
+	ws := buildWorkspace(repos, wsHome, includeWorktrees)
 
 	out, err := json.MarshalIndent(ws, "", "  ")
 	if err != nil {
@@ -45,7 +45,7 @@ func Code(m *manifest.Manifest, wsHome, filter string) error {
 }
 
 // buildWorkspace creates the VS Code workspace JSON structure.
-func buildWorkspace(repos []manifest.RepoInfo, wsHome string) map[string]interface{} {
+func buildWorkspace(repos []manifest.RepoInfo, wsHome string, includeWorktrees bool) map[string]interface{} {
 	folders := []interface{}{
 		map[string]interface{}{"name": "~ workspace", "path": "."},
 	}
@@ -56,7 +56,7 @@ func buildWorkspace(repos []manifest.RepoInfo, wsHome string) map[string]interfa
 		"~ workspace": 1,
 	}
 	for _, repo := range repos {
-		for _, folder := range repoFolders(repo, wsHome) {
+		for _, folder := range repoFolders(repo, wsHome, includeWorktrees) {
 			path := filepath.Clean(folder.Path)
 			if seenPaths[path] {
 				continue
@@ -86,10 +86,13 @@ type workspaceFolder struct {
 	Path string
 }
 
-func repoFolders(repo manifest.RepoInfo, wsHome string) []workspaceFolder {
+func repoFolders(repo manifest.RepoInfo, wsHome string, includeWorktrees bool) []workspaceFolder {
 	paths := []string{repo.Path}
-	if worktrees, err := git.WorktreePaths(repo.Path); err == nil {
-		paths = orderedWorktreePaths(repo.Path, worktrees)
+	if includeWorktrees {
+		worktrees, err := git.WorktreePaths(repo.Path)
+		if err == nil {
+			paths = orderedWorktreePaths(repo.Path, worktrees)
+		}
 	}
 
 	folders := make([]workspaceFolder, 0, len(paths))
@@ -158,8 +161,8 @@ func uniqueFolderName(baseName, relPath string, seen map[string]int) string {
 }
 
 // BuildWorkspaceJSON is exported for testing.
-func BuildWorkspaceJSON(repos []manifest.RepoInfo, wsHome string) ([]byte, error) {
-	ws := buildWorkspace(repos, wsHome)
+func BuildWorkspaceJSON(repos []manifest.RepoInfo, wsHome string, includeWorktrees bool) ([]byte, error) {
+	ws := buildWorkspace(repos, wsHome, includeWorktrees)
 	out, err := json.MarshalIndent(ws, "", "  ")
 	if err != nil {
 		return nil, err
