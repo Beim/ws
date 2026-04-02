@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dtuit/ws/internal/manifest"
@@ -157,14 +158,14 @@ func TestCDPath_SelectsWorktreeByBasename(t *testing.T) {
 }
 
 func TestParseSuperArgs_WithGroup(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"ai", "git", "status"})
@@ -174,12 +175,12 @@ repos:
 }
 
 func TestParseSuperArgs_WithoutGroup(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"git", "status"})
@@ -189,14 +190,14 @@ repos:
 }
 
 func TestParseSuperArgs_WorktreesBeforeFilter(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"--worktrees", "ai", "git", "status"})
@@ -207,14 +208,14 @@ repos:
 }
 
 func TestParseSuperArgs_ShorthandWorktreesBeforeFilter(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"-t", "ai", "git", "status"})
@@ -225,14 +226,14 @@ repos:
 }
 
 func TestParseSuperArgs_WorktreesAfterFilter(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"ai", "--worktrees", "git", "status"})
@@ -243,14 +244,14 @@ repos:
 }
 
 func TestParseSuperArgs_NoWorktreesAfterFilter(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"ai", "--no-worktrees", "git", "status"})
@@ -261,12 +262,12 @@ repos:
 }
 
 func TestParseSuperArgs_Empty(t *testing.T) {
-	m, _ := manifest.Parse([]byte(`
+	m, _ := parseManifestYAML(`
 remotes:
   default: git@example.com
 repos:
   repo-a:
-`))
+`)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, nil)
 	assert.Equal(t, "", filter)
@@ -275,14 +276,14 @@ repos:
 }
 
 func TestParseSuperArgs_AllFilter(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, cmdArgs, worktrees := ParseSuperArgs(m, []string{"all", "git", "status"})
@@ -292,7 +293,7 @@ repos:
 }
 
 func TestCompleteTopLevel(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
@@ -300,7 +301,7 @@ groups:
 repos:
   repo-a:
   repo-b:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{""}, 0)
@@ -322,13 +323,13 @@ func TestCompleteTopLevelFallsBackToCommands(t *testing.T) {
 }
 
 func TestCompleteCDRepos(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 repos:
   repo-a:
   repo-b:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"cd", "repo"}, 1)
@@ -336,14 +337,14 @@ repos:
 }
 
 func TestCompleteSetupIncludesFlagsAndFilters(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"setup", ""}, 1)
@@ -353,14 +354,14 @@ repos:
 }
 
 func TestCompleteLLIncludesWorktreesFlagAndFilters(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"ll", ""}, 1)
@@ -372,12 +373,12 @@ repos:
 }
 
 func TestCompleteListIncludesWorktreesFlagAndShowAll(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"list", ""}, 1)
@@ -389,14 +390,14 @@ repos:
 }
 
 func TestCompletePassthroughAfterWorktreesFallsBackToCommands(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"--", "--worktrees", "gi"}, 2)
@@ -404,14 +405,14 @@ repos:
 }
 
 func TestCompletePassthroughAfterNoWorktreesFallsBackToCommands(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"--", "--no-worktrees", "gi"}, 2)
@@ -419,14 +420,14 @@ repos:
 }
 
 func TestCompletePassthroughAfterShorthandWorktreesFallsBackToCommands(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"--", "-t", "gi"}, 2)
@@ -434,14 +435,14 @@ repos:
 }
 
 func TestCompleteContextIncludesReset(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"context", ""}, 1)
@@ -454,14 +455,14 @@ repos:
 }
 
 func TestCompleteContextAfterWorktreesFlagIncludesFilters(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"context", "-t", ""}, 2)
@@ -471,14 +472,14 @@ repos:
 }
 
 func TestCompleteContextAddSuggestsFilters(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"context", "add", ""}, 2)
@@ -490,7 +491,7 @@ repos:
 }
 
 func TestNormalizeContextFilter(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
@@ -500,7 +501,7 @@ repos:
   repo-a:
   repo-b:
   repo-c:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, err := normalizeContextFilter(m, "backend,repo-c,backend")
@@ -509,7 +510,7 @@ repos:
 }
 
 func TestNormalizeContextFilter_AllWins(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
@@ -517,7 +518,7 @@ groups:
 repos:
   repo-a:
   repo-b:
-`))
+`)
 	require.NoError(t, err)
 
 	filter, err := normalizeContextFilter(m, "repo-b,all")
@@ -526,14 +527,14 @@ repos:
 }
 
 func TestNormalizeContextFilter_RejectsUnknown(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   backend: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	_, err = normalizeContextFilter(m, "backend,nope")
@@ -542,7 +543,7 @@ repos:
 
 func TestAddContext_MergesWithExistingContext(t *testing.T) {
 	wsHome := t.TempDir()
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 root: repos
 remotes:
   default: git@example.com
@@ -553,7 +554,7 @@ repos:
   repo-a:
   repo-b:
   repo-c:
-`))
+`)
 	require.NoError(t, err)
 
 	require.NoError(t, SetContext(m, wsHome, "backend", false))
@@ -651,7 +652,7 @@ repos:
 
 func TestSetContextFailureDoesNotOverwriteResolvedScope(t *testing.T) {
 	wsHome := t.TempDir()
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 root: repos
 workspace: ws.code-workspace
 remotes:
@@ -660,7 +661,7 @@ groups:
   empty: []
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 	initCheckout(t, filepath.Join(wsHome, "repos", "repo-a"))
 
@@ -719,14 +720,14 @@ repos:
 }
 
 func TestCompleteGroupCommandFallsBackToCommands(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"ai", ""}, 1)
@@ -734,14 +735,14 @@ repos:
 }
 
 func TestCompleteGroupCommandDelegatesAfterCommandWord(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"ai", "git", ""}, 2)
@@ -750,12 +751,12 @@ repos:
 }
 
 func TestCompletePassthroughDelegatesAfterCommandWord(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"git", "branch", ""}, 2)
@@ -764,14 +765,14 @@ repos:
 }
 
 func TestCompleteEscapedPassthroughDelegatesAfterCommandWord(t *testing.T) {
-	m, err := manifest.Parse([]byte(`
+	m, err := parseManifestYAML(`
 remotes:
   default: git@example.com
 groups:
   ai: [repo-a]
 repos:
   repo-a:
-`))
+`)
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"--", "ai", "git", "branch", ""}, 4)
@@ -785,6 +786,13 @@ func runGit(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v failed: %s", args, string(output))
+}
+
+func parseManifestYAML(yaml string) (*manifest.Manifest, error) {
+	if !strings.Contains(yaml, "\nroot:") && !strings.HasPrefix(strings.TrimSpace(yaml), "root:") {
+		yaml = "root: repos\n" + yaml
+	}
+	return manifest.Parse([]byte(yaml))
 }
 
 func loadManifestWithLocal(t *testing.T, wsHome, manifestYAML, localYAML string) *manifest.Manifest {

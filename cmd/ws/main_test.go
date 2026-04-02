@@ -170,6 +170,9 @@ repos:
 func activeRepoConfigs(t *testing.T, yaml string) map[string]manifest.RepoConfig {
 	t.Helper()
 
+	if !strings.Contains(yaml, "\nroot:") && !strings.HasPrefix(strings.TrimSpace(yaml), "root:") {
+		yaml = "root: repos\n" + yaml
+	}
 	m, err := manifest.Parse([]byte(yaml))
 	require.NoError(t, err)
 	return m.ActiveRepos()

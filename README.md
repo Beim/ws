@@ -55,23 +55,24 @@ and keep downloaded artifacts aligned with `ws version`.
 Create a repo whose job is to describe and manage your working set.
 
 ```text
-acme-workspace/
-├── manifest.yml
-├── manifest.local.yml      # optional, ignored
-├── .ws-context             # generated, ignored
-├── .ws-context.resolved    # generated, ignored
-├── .scope/                 # generated symlinks, ignored
-├── ws.code-workspace       # generated, ignored
-└── repos/
-    ├── api-server/
-    ├── auth-service/
-    └── web-app/
+code/
+├── acme-workspace/
+│   ├── manifest.yml
+│   ├── manifest.local.yml      # optional, ignored
+│   ├── .ws-context             # generated, ignored
+│   ├── .ws-context.resolved    # generated, ignored
+│   ├── .scope/                 # generated symlinks, ignored
+│   └── ws.code-workspace       # generated, ignored
+├── api-server/
+├── auth-service/
+└── web-app/
 ```
 
-For a self-contained workspace repo, `root: repos` is the simplest default.
-If tighter agent scoping matters more than a single-tree layout, keep the managed repos outside the workspace repo and use `.scope/` as the agent-facing tree.
+`root` is required in `manifest.yml`; there is no implicit default.
+The recommended layout is `root: ..`, which keeps the workspace repo separate from the managed repos while still letting `.scope/` act as the agent-facing tree.
+If you prefer a self-contained tree, use `root: repos` instead.
 
-A typical `.gitignore` for the workspace repo:
+A typical `.gitignore` for the recommended sibling-checkout layout:
 
 ```gitignore
 .scope/
@@ -79,8 +80,9 @@ A typical `.gitignore` for the workspace repo:
 .ws-context.resolved
 *.code-workspace
 manifest.local.yml
-repos/
 ```
+
+If you use `root: repos`, add `repos/` too.
 
 Commit the control-plane files: `manifest.yml`, shared docs, and any shared scripts.
 Keep local overrides, generated workspace files, and cloned repos out of git.
@@ -98,15 +100,15 @@ cat > .gitignore <<'EOF'
 .ws-context.resolved
 *.code-workspace
 manifest.local.yml
-repos/
 EOF
 
 cat > manifest.yml <<'EOF'
+root: ..
+
 remotes:
   default: git@github.com:acme-corp
 
 branch: main
-root: repos
 
 groups:
   backend: [api-server, auth-service, worker]
@@ -124,22 +126,23 @@ git add .gitignore manifest.yml
 git commit -m "Bootstrap workspace"
 ```
 
-See [example/README.md](example/README.md) for a runnable sample workspace.
+See [example/README.md](example/README.md) for a runnable self-contained sample workspace that uses `root: repos`.
 
 ## Quick Start
 
 1. Create a repo for the workspace manifest.
-2. Add `manifest.yml`.
+2. Add `manifest.yml` with an explicit `root`.
 3. Run `ws` from inside that repo.
 
 Example `manifest.yml`:
 
 ```yaml
+root: ..
+
 remotes:
   default: git@github.com:acme-corp
 
 branch: main
-root: repos
 workspace: ws.code-workspace
 
 groups:
@@ -292,12 +295,13 @@ ls .scope
 `manifest.yml` is the source of truth for the workspace.
 
 ```yaml
+root: ..
+
 remotes:
   default: git@github.com:acme-corp
   upstream: https://github.com/open-source-org
 
 branch: main
-root: repos
 workspace: ws.code-workspace
 
 groups:
@@ -321,7 +325,7 @@ Field summary:
 
 - `remotes`: named clone URL prefixes; `default` is the fallback
 - `branch`: default branch for repos that do not override it
-- `root`: where repos live; relative to the manifest directory or absolute
+- `root`: required; where repos live, relative to the manifest directory or absolute
 - `workspace`: filename for the generated VS Code workspace
 - `worktrees`: default worktree mode for supported commands
 - `groups`: named repo sets used for filters

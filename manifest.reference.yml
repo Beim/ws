@@ -30,23 +30,23 @@ branch: main
 # ---------------------------------------------------------------------------
 # root
 # ---------------------------------------------------------------------------
-# Directory where repos are cloned, relative to this file (or absolute).
-# Default: ..   (parent directory - repos as siblings of the workspace)
+# Required. Directory where repos are cloned, relative to this file (or absolute).
 #
 # Examples:
-#   root: ..              # sibling layout (default)
+#   root: ..              # recommended sibling layout
 #   root: repos           # repos inside workspace directory
 #   root: /opt/code       # absolute path
 #
 # Recommendation:
-#   Use root: repos when the manifest repo itself is your workspace root.
+#   Prefer root: .. to keep the workspace repo separate from the managed repos.
+#   Use root: repos when you want a self-contained workspace directory.
 
 root: ..
 
 # ---------------------------------------------------------------------------
 # workspace
 # ---------------------------------------------------------------------------
-# Filename for the generated VS Code workspace file (created by ws code).
+# Filename for the generated VS Code workspace file (created by ws context).
 # Placed in the same directory as this manifest.
 # Default: ws.code-workspace
 
@@ -62,13 +62,12 @@ workspace: ws.code-workspace
 #   ws list
 #   ws ll
 #   ws pull
-#   ws code
 #   ws context
 #   ws <command...>
 #
 # Use local CLI overrides when needed:
 #   ws -t ll backend
-#   ws --no-worktrees code backend
+#   ws --no-worktrees context backend
 #
 # Recommendation:
 #   Put personal preference here in manifest.local.yml, not shared manifest.yml.
@@ -81,12 +80,12 @@ worktrees: false
 # Named sets of repos. Used for filtering across all commands:
 #   ws ll backend          show dashboard for backend repos
 #   ws context backend     scope all commands to backend
-#   ws code backend        generate VS Code workspace for backend
+#   ws open                open the current generated VS Code workspace
 #   ws fetch backend       fetch only backend repos
 #   ws backend git status  run git status in backend repos
 #
 # A repo can appear in multiple groups.
-# "all" is a reserved filter that returns every repo in at least one group.
+# "all" is a reserved filter that returns every active repo in the merged manifest.
 
 groups:
   backend:  [api-server, auth-service, worker]

@@ -12,7 +12,7 @@ import (
 
 // Manifest is the parsed workspace manifest.
 type Manifest struct {
-	Root          string              // directory where repos live, relative to manifest dir (default "..")
+	Root          string              // directory where repos live, relative to manifest dir
 	Workspace     string              // VS Code workspace filename (default "ws.code-workspace")
 	Worktrees     bool                // default worktree expansion behavior for supported commands
 	Remotes       map[string]string   // name → URL prefix ("default" is the fallback)
@@ -42,7 +42,7 @@ type RepoInfo struct {
 
 // rawManifest is the YAML deserialization target.
 type rawManifest struct {
-	Root      string                       `yaml:"root"`      // where repos live (default "..")
+	Root      string                       `yaml:"root"`      // where repos live
 	Workspace string                       `yaml:"workspace"` // VS Code workspace filename
 	Worktrees *bool                        `yaml:"worktrees"` // default worktree behavior
 	Remotes   map[string]string            `yaml:"remotes"`   // named remotes
@@ -72,7 +72,12 @@ func Load(path string) (*Manifest, error) {
 }
 
 // Parse parses manifest YAML bytes into a Manifest.
+// The primary manifest must set root explicitly.
 func Parse(data []byte) (*Manifest, error) {
+	return parse(data, true)
+}
+
+func parse(data []byte, requireRoot bool) (*Manifest, error) {
 	var raw rawManifest
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing manifest: %w", err)
@@ -88,8 +93,8 @@ func Parse(data []byte) (*Manifest, error) {
 		Exclude:       raw.Exclude,
 	}
 
-	if m.Root == "" {
-		m.Root = ".."
+	if requireRoot && strings.TrimSpace(m.Root) == "" {
+		return nil, fmt.Errorf("parsing manifest: root is required")
 	}
 	if m.Workspace == "" {
 		m.Workspace = "ws.code-workspace"
@@ -176,13 +181,13 @@ func (m *Manifest) MergeLocal(path string) error {
 		return err
 	}
 
-	local, err := Parse(data)
+	local, err := parse(data, false)
 	if err != nil {
 		return err
 	}
 
-	// Root: local overrides if explicitly set (not the default "..")
-	if local.Root != ".." {
+	// Root: local overrides if explicitly set.
+	if local.Root != "" {
 		m.Root = local.Root
 	}
 

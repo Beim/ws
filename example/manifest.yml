@@ -1,4 +1,5 @@
 # Example workspace: small Go ecosystem projects
+# This sample uses root: repos to stay self-contained under example/.
 # Run: cd example && ws setup
 
 remotes:

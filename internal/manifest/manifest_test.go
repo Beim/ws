@@ -13,6 +13,8 @@ import (
 const testWSHome = "/tmp/test-ws"
 
 const testManifest = `
+root: ..
+
 remotes:
   default: git@github.com:acme-corp
   upstream: git@github.com:open-source-org
@@ -261,6 +263,7 @@ func TestMergeLocal_NoLocalFile(t *testing.T) {
 
 func TestParse_DefaultBranch(t *testing.T) {
 	yaml := `
+root: ..
 remotes:
   default: git@example.com
 repos:
@@ -273,6 +276,7 @@ repos:
 
 func TestParse_WorktreesExplicitTrue(t *testing.T) {
 	yaml := `
+root: ..
 worktrees: true
 remotes:
   default: git@example.com
@@ -287,6 +291,7 @@ repos:
 func TestMergeLocal_WorktreesCanDisable(t *testing.T) {
 	dir := t.TempDir()
 	mainYAML := `
+root: ..
 worktrees: true
 remotes:
   default: git@example.com
@@ -304,6 +309,17 @@ worktrees: false
 	assert.False(t, m.Worktrees)
 }
 
+func TestParse_RequiresRoot(t *testing.T) {
+	_, err := Parse([]byte(`
+remotes:
+  default: git@example.com
+repos:
+  my-repo:
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "root is required")
+}
+
 func TestParse_RejectsPathTraversalRepoName(t *testing.T) {
 	tests := []string{
 		"../../etc/evil",
@@ -317,7 +333,7 @@ func TestParse_RejectsPathTraversalRepoName(t *testing.T) {
 	}
 	for _, name := range tests {
 		t.Run(name, func(t *testing.T) {
-			yaml := fmt.Sprintf("remotes:\n  default: git@example.com\nrepos:\n  %q:\n", name)
+			yaml := fmt.Sprintf("root: ..\nremotes:\n  default: git@example.com\nrepos:\n  %q:\n", name)
 			_, err := Parse([]byte(yaml))
 			assert.Error(t, err, "expected error for repo name %q", name)
 		})
@@ -326,6 +342,7 @@ func TestParse_RejectsPathTraversalRepoName(t *testing.T) {
 
 func TestParse_RejectsCommaGroupName(t *testing.T) {
 	_, err := Parse([]byte(`
+root: ..
 remotes:
   default: git@example.com
 groups:
@@ -364,13 +381,14 @@ func TestResolvePath_Default(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	// Default root is "..", so path = wsHome/../repo-name
+	// Manifest root is explicitly "..", so path = wsHome/../repo-name
 	path := m.ResolvePath("/home/user/workspace", "api-server", m.Repos["api-server"])
 	assert.Equal(t, "/home/user/api-server", path)
 }
 
 func TestResolvePath_PerRepoRoot(t *testing.T) {
 	yaml := `
+root: ..
 remotes:
   default: git@example.com
 repos:

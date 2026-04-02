@@ -1,6 +1,7 @@
 # ws example workspace
 
 A sample workspace using small open-source Go repos from [Charm](https://github.com/charmbracelet).
+This sample is intentionally self-contained and uses `root: repos`.
 
 For the full manifest schema, see [../manifest.reference.yml](../manifest.reference.yml).
 
