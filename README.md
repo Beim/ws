@@ -205,6 +205,8 @@ ws context [-t|--worktrees|--no-worktrees] [filter]
 ws open                   Open the current VS Code workspace
 ws context add [-t|--worktrees|--no-worktrees] <filter>
                           Extend the current context
+ws context remove [-t|--worktrees|--no-worktrees] <filter>
+                          Remove repos from the current context
 ws cd [repo[@worktree]] [--worktree|-t <selector>]
                           Print repo path (or workspace root)
 ws init                   Emit shell integration and completion
@@ -264,6 +266,7 @@ That makes the workspace repo useful as an agent entry point:
 - run `ws context backend` before starting focused work
 - run `ws open` when you want to open the current generated workspace in VS Code
 - run `ws context add repo-x` when you want to widen that scope without replacing it
+- run `ws context remove repo-x` when you want to narrow the current scope without rebuilding it from scratch
 - use the workspace repo as the control plane and `.scope/` as the narrowed filesystem view for agents
 - keep the shared manifest committed while local context stays in ignored files
 
@@ -271,6 +274,7 @@ Recommended operator and agent loop:
 
 1. From the workspace root, run `ws context <filter>`.
    To widen an existing scope, use `ws context add <filter>`.
+   To narrow the current scope, use `ws context remove <filter>`.
 2. Verify the scope with `ws ll` or `ws list`.
 3. Start the agent from `.scope/` when you want filesystem visibility to match that context.
 4. Return to the workspace root when you need to change scope or edit `manifest.yml`.

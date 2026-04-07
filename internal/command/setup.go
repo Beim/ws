@@ -13,7 +13,10 @@ import (
 
 // Setup clones missing repos. With installShell, writes shell config to bashrc/zshrc.
 func Setup(m *manifest.Manifest, wsHome, filter string, installShell bool) error {
-	repos := m.ResolveFilter(filter, wsHome)
+	repos, err := resolveFilterRepos(m, wsHome, filter, false)
+	if err != nil {
+		return err
+	}
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil

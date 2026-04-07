@@ -9,7 +9,10 @@ import (
 
 // Fetch runs git fetch --prune across repos with progress and per-repo output.
 func Fetch(m *manifest.Manifest, wsHome, filter string) error {
-	repos := m.ResolveFilter(filter, wsHome)
+	repos, err := resolveCommandRepos(m, wsHome, filter, false)
+	if err != nil {
+		return err
+	}
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil

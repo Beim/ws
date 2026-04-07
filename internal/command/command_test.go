@@ -451,6 +451,7 @@ repos:
 	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "add")
+	assert.Contains(t, result.Values, "remove")
 	assert.Contains(t, result.Values, "none")
 	assert.Contains(t, result.Values, "reset")
 }
@@ -484,6 +485,25 @@ repos:
 	require.NoError(t, err)
 
 	result := Complete(m, []string{"context", "add", ""}, 2)
+	assert.Contains(t, result.Values, "ai")
+	assert.Contains(t, result.Values, "repo-a")
+	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--no-worktrees")
+	assert.NotContains(t, result.Values, "reset")
+}
+
+func TestCompleteContextRemoveSuggestsFilters(t *testing.T) {
+	m, err := parseManifestYAML(`
+remotes:
+  default: git@example.com
+groups:
+  ai: [repo-a]
+repos:
+  repo-a:
+`)
+	require.NoError(t, err)
+
+	result := Complete(m, []string{"context", "remove", ""}, 2)
 	assert.Contains(t, result.Values, "ai")
 	assert.Contains(t, result.Values, "repo-a")
 	assert.Contains(t, result.Values, "-t")
@@ -590,6 +610,127 @@ repos:
 	assert.Equal(t, []string{"local-repo"}, state.Resolved)
 	assertScopeEntries(t, wsHome, "local-repo")
 	assertWorkspaceFolders(t, filepath.Join(wsHome, m.Workspace), "~ workspace", "local-repo")
+}
+
+func TestRemoveContext_SubtractsFromCurrentScope(t *testing.T) {
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+groups:
+  backend: [repo-a]
+  frontend: [repo-b]
+repos:
+  repo-a:
+  repo-b:
+  repo-c:
+`)
+	require.NoError(t, err)
+	initCheckout(t, filepath.Join(wsHome, "repos", "repo-a"))
+	initCheckout(t, filepath.Join(wsHome, "repos", "repo-b"))
+	initCheckout(t, filepath.Join(wsHome, "repos", "repo-c"))
+
+	require.NoError(t, SetContext(m, wsHome, "backend,repo-c,frontend", false))
+	require.NoError(t, RemoveContext(m, wsHome, "frontend,repo-c", false))
+
+	state := readStoredContext(t, wsHome)
+	assert.Equal(t, "repo-a", state.Raw)
+	assert.Equal(t, []string{"repo-a"}, state.Resolved)
+	assertScopeEntries(t, wsHome, "repo-a")
+	assertWorkspaceFolders(t, filepath.Join(wsHome, m.Workspace), "~ workspace", "repo-a")
+}
+
+func TestRemoveContext_FromResolvedAllScope(t *testing.T) {
+	wsHome := t.TempDir()
+	m := loadManifestWithLocal(t, wsHome, `
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+  repo-b:
+`, `
+repos:
+  local-repo:
+`)
+	initCheckout(t, filepath.Join(wsHome, "repos", "repo-a"))
+	initCheckout(t, filepath.Join(wsHome, "repos", "local-repo"))
+
+	require.NoError(t, SetContext(m, wsHome, "all", false))
+	require.NoError(t, RemoveContext(m, wsHome, "local-repo", false))
+
+	state := readStoredContext(t, wsHome)
+	assert.Equal(t, "repo-a", state.Raw)
+	assert.Equal(t, []string{"repo-a"}, state.Resolved)
+}
+
+func TestRemoveContext_WorktreeTarget(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+repos:
+  repo:
+`)
+	require.NoError(t, err)
+
+	repoDir := filepath.Join(wsHome, "repos", "repo")
+	worktreeDir := filepath.Join(wsHome, "repo-feature")
+	initCheckout(t, repoDir)
+	runGit(t, repoDir, "worktree", "add", "-b", "feature", worktreeDir)
+
+	require.NoError(t, SetContext(m, wsHome, "repo", true))
+	require.NoError(t, RemoveContext(m, wsHome, "repo@repo-feature", true))
+
+	state := readStoredContext(t, wsHome)
+	assert.Equal(t, "repo", state.Raw)
+	assert.Equal(t, []string{"repo"}, state.Resolved)
+	assertScopeEntries(t, wsHome, "repo")
+	assertWorkspaceFolders(t, filepath.Join(wsHome, m.Workspace), "~ workspace", "repo")
+}
+
+func TestRemoveContext_RequiresExistingContext(t *testing.T) {
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+`)
+	require.NoError(t, err)
+
+	err = RemoveContext(m, wsHome, "repo-a", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no context set")
+}
+
+func TestRemoveContext_RejectsEmptyResult(t *testing.T) {
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+`)
+	require.NoError(t, err)
+	initCheckout(t, filepath.Join(wsHome, "repos", "repo-a"))
+	require.NoError(t, SetContext(m, wsHome, "repo-a", false))
+
+	err = RemoveContext(m, wsHome, "repo-a", false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "leave the context empty")
 }
 
 func TestSetContextAll_UsesOnlyClonedReposInResolvedScope(t *testing.T) {
@@ -716,7 +857,8 @@ groups:
   local: [local-repo]
 `)
 
-	repos := resolveContextRepos(m, wsHome, "local-repo")
+	repos, err := resolveContextRepos(m, wsHome, "local-repo", false)
+	require.NoError(t, err)
 	require.Len(t, repos, 1)
 	assert.Equal(t, "local-repo", repos[0].Name)
 }
@@ -737,8 +879,37 @@ repos:
 	initCheckout(t, filepath.Join(wsHome, "repos", "repo-a"))
 	initCheckout(t, filepath.Join(wsHome, "repos", "local-repo"))
 
-	repos := resolveContextRepos(m, wsHome, "all")
+	repos, err := resolveContextRepos(m, wsHome, "all", false)
+	require.NoError(t, err)
 	assert.Equal(t, []string{"local-repo", "repo-a"}, repoNames(repos))
+}
+
+func TestResolveCommandRepos_ExplicitWorktreeTarget(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+remotes:
+  default: git@example.com
+repos:
+  repo:
+`)
+	require.NoError(t, err)
+
+	repoDir := filepath.Join(wsHome, "repos", "repo")
+	worktreeDir := filepath.Join(wsHome, "repo-feature")
+	initCheckout(t, repoDir)
+	runGit(t, repoDir, "worktree", "add", "-b", "feature", worktreeDir)
+
+	repos, err := resolveCommandRepos(m, wsHome, "repo@repo-feature", false)
+	require.NoError(t, err)
+	require.Len(t, repos, 1)
+	assert.Equal(t, "repo@repo-feature", repos[0].Name)
+	assert.Equal(t, "repo-feature", repos[0].Worktree)
+	assert.Equal(t, worktreeDir, repos[0].Path)
 }
 
 func TestCompleteGroupCommandFallsBackToCommands(t *testing.T) {

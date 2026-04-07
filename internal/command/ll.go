@@ -13,16 +13,17 @@ const llWorktreeSuffixColor = term.Bold + term.Cyan
 
 // LL displays a dashboard of repo status: branch, dirty state, last commit.
 func LL(m *manifest.Manifest, wsHome, filter string, includeWorktrees bool) error {
-	repos := m.ResolveFilter(filter, wsHome)
+	repos, err := resolveCommandRepos(m, wsHome, filter, includeWorktrees)
+	if err != nil {
+		return err
+	}
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil
 	}
 
 	worktreeExtras := make(map[string]int)
-	if includeWorktrees {
-		repos = expandReposToWorktrees(repos)
-	} else {
+	if !includeWorktrees {
 		for _, set := range git.DiscoverWorktreesAll(repos, git.Workers(len(repos))) {
 			if set.Err == nil && len(set.Worktrees) > 1 {
 				worktreeExtras[set.Repo.Name] = len(set.Worktrees) - 1

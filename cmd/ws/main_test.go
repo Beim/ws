@@ -99,6 +99,23 @@ func TestParseContextArgs_SetWithWorktreesFlag(t *testing.T) {
 	assert.True(t, worktrees.Value)
 }
 
+func TestParseContextArgs_Remove(t *testing.T) {
+	action, filter, worktrees, err := parseContextArgs([]string{"remove", "backend", "repo-a"})
+	require.NoError(t, err)
+	assert.Equal(t, "remove", action)
+	assert.Equal(t, "backend,repo-a", filter)
+	assert.False(t, worktrees.Set)
+}
+
+func TestParseContextArgs_RemoveWithWorktreesFlag(t *testing.T) {
+	action, filter, worktrees, err := parseContextArgs([]string{"remove", "-t", "backend", "repo-a"})
+	require.NoError(t, err)
+	assert.Equal(t, "remove", action)
+	assert.Equal(t, "backend,repo-a", filter)
+	assert.True(t, worktrees.Set)
+	assert.True(t, worktrees.Value)
+}
+
 func TestParseContextArgs_AddWithWorktreesFlag(t *testing.T) {
 	action, filter, worktrees, err := parseContextArgs([]string{"add", "-t", "backend", "repo-a"})
 	require.NoError(t, err)
@@ -119,6 +136,11 @@ func TestParseContextArgs_SetWithNoWorktreesFlag(t *testing.T) {
 
 func TestParseContextArgs_AddRequiresFilter(t *testing.T) {
 	_, _, _, err := parseContextArgs([]string{"add"})
+	require.Error(t, err)
+}
+
+func TestParseContextArgs_RemoveRequiresFilter(t *testing.T) {
+	_, _, _, err := parseContextArgs([]string{"remove"})
 	require.Error(t, err)
 }
 

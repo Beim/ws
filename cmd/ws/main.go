@@ -94,6 +94,10 @@ dispatch:
 			if err := command.AddContext(m, wsHome, filter, includeWorktrees); err != nil {
 				fatal(err)
 			}
+		case "remove":
+			if err := command.RemoveContext(m, wsHome, filter, includeWorktrees); err != nil {
+				fatal(err)
+			}
 		}
 
 	case "cd":
@@ -498,11 +502,11 @@ func parseContextArgs(args []string) (action string, filter string, worktreesOve
 	if len(filtered) == 0 {
 		return "show", "", worktreesOverride, nil
 	}
-	if filtered[0] == "add" {
+	if filtered[0] == "add" || filtered[0] == "remove" {
 		if len(filtered) == 1 {
-			return "", "", command.WorktreesOverride{}, fmt.Errorf("usage: ws context add [-t|--worktrees|--no-worktrees] <filter>")
+			return "", "", command.WorktreesOverride{}, fmt.Errorf("usage: ws context %s [-t|--worktrees|--no-worktrees] <filter>", filtered[0])
 		}
-		return "add", strings.Join(filtered[1:], ","), worktreesOverride, nil
+		return filtered[0], strings.Join(filtered[1:], ","), worktreesOverride, nil
 	}
 	return "set", strings.Join(filtered, ","), worktreesOverride, nil
 }
@@ -571,6 +575,8 @@ Commands:
                          Set default filter (no arg = show, "none" = clear)
   context add [-t|--worktrees|--no-worktrees] <filter>
                          Add groups or repos to the existing context
+  context remove [-t|--worktrees|--no-worktrees] <filter>
+                         Remove groups or repos from the existing context
 
 Any unrecognized command is run across repos:
   ws git status          Run "git status" in all repos

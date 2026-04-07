@@ -175,11 +175,11 @@ func completeContext(m *manifest.Manifest, args []string, current int) Completio
 
 	if len(nonFlags) == 0 {
 		values := append(flags, filterSuggestions(m)...)
-		values = append(values, "none", "reset", "add")
+		values = append(values, "none", "reset", "add", "remove")
 		return finalizeCompletion(values, currentWord, false)
 	}
 
-	if nonFlags[0] == "add" {
+	if nonFlags[0] == "add" || nonFlags[0] == "remove" {
 		values := append(flags, filterSuggestions(m)...)
 		return finalizeCompletion(values, currentWord, false)
 	}
@@ -316,6 +316,12 @@ func isFilterToken(m *manifest.Manifest, token string) bool {
 	}
 	if m == nil {
 		return false
+	}
+	if _, ok := m.ActiveRepos()[token]; ok {
+		return true
+	}
+	if repoName, selector, ok := splitWorktreeToken(token, m.ActiveRepos()); ok && repoName != "" && selector != "" {
+		return true
 	}
 	return m.IsGroupOrRepo(token)
 }

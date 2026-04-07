@@ -102,7 +102,7 @@ type workspaceFolder struct {
 
 func repoFolders(repo manifest.RepoInfo, wsHome string, includeWorktrees bool) []workspaceFolder {
 	paths := []string{repo.Path}
-	if includeWorktrees {
+	if includeWorktrees && repo.Worktree == "" {
 		worktrees, err := git.WorktreePaths(repo.Path)
 		if err == nil {
 			paths = orderedWorktreePaths(repo.Path, worktrees)

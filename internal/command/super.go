@@ -15,13 +15,13 @@ func Super(m *manifest.Manifest, wsHome, filter string, cmdArgs []string, includ
 		return fmt.Errorf("command not found: %s", cmdArgs[0])
 	}
 
-	repos := m.ResolveFilter(filter, wsHome)
+	repos, err := resolveCommandRepos(m, wsHome, filter, includeWorktrees)
+	if err != nil {
+		return err
+	}
 	if len(repos) == 0 {
 		fmt.Println("No repos matched the filter.")
 		return nil
-	}
-	if includeWorktrees {
-		repos = expandReposToWorktrees(repos)
 	}
 
 	workers := git.Workers(len(repos))

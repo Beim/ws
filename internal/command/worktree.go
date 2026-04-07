@@ -29,12 +29,17 @@ func expandReposToWorktrees(repos []manifest.RepoInfo) []manifest.RepoInfo {
 			continue
 		}
 		for _, target := range worktreeTargets(set.Repo, set.Worktrees) {
+			worktreeName := ""
+			if !target.Primary {
+				worktreeName = worktreeDisplayName(set.Repo.Name, target.Name)
+			}
 			expanded = append(expanded, manifest.RepoInfo{
-				Name:   target.Name,
-				URL:    set.Repo.URL,
-				Branch: target.Branch,
-				Groups: set.Repo.Groups,
-				Path:   target.Path,
+				Name:     target.Name,
+				URL:      set.Repo.URL,
+				Branch:   target.Branch,
+				Groups:   set.Repo.Groups,
+				Path:     target.Path,
+				Worktree: worktreeName,
 			})
 		}
 	}
@@ -99,6 +104,52 @@ func worktreeTargets(repo manifest.RepoInfo, worktrees []git.WorktreeInfo) []wor
 	})
 
 	return targets
+}
+
+func resolveExplicitWorktreeTarget(repo manifest.RepoInfo, selector string) (manifest.RepoInfo, error) {
+	worktrees, err := git.DiscoverWorktrees(repo)
+	if err != nil {
+		return manifest.RepoInfo{}, err
+	}
+
+	for _, target := range worktreeTargets(repo, worktrees) {
+		if target.Primary {
+			continue
+		}
+		if target.Name == repo.Name+"@"+selector || worktreeDisplayName(repo.Name, target.Name) == selector {
+			return manifest.RepoInfo{
+				Name:     target.Name,
+				URL:      repo.URL,
+				Branch:   target.Branch,
+				Groups:   repo.Groups,
+				Path:     target.Path,
+				Worktree: worktreeDisplayName(repo.Name, target.Name),
+			}, nil
+		}
+	}
+
+	return manifest.RepoInfo{}, fmt.Errorf("no worktree %q found for %s", selector, repo.Name)
+}
+
+func splitWorktreeToken(token string, active map[string]manifest.RepoConfig) (string, string, bool) {
+	if !strings.Contains(token, "@") {
+		return "", "", false
+	}
+
+	bestRepo := ""
+	for repoName := range active {
+		if !strings.HasPrefix(token, repoName+"@") {
+			continue
+		}
+		if len(repoName) > len(bestRepo) {
+			bestRepo = repoName
+		}
+	}
+	if bestRepo == "" {
+		return "", "", false
+	}
+
+	return bestRepo, strings.TrimPrefix(token, bestRepo+"@"), true
 }
 
 func worktreeDisplayName(repoName, targetName string) string {

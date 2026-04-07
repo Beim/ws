@@ -33,11 +33,12 @@ type RepoConfig struct {
 
 // RepoInfo is a fully resolved repo entry.
 type RepoInfo struct {
-	Name   string
-	URL    string
-	Branch string
-	Groups []string
-	Path   string // absolute path to repo on disk
+	Name     string
+	URL      string
+	Branch   string
+	Groups   []string
+	Path     string // absolute path to repo on disk
+	Worktree string // non-empty when this RepoInfo targets a specific linked worktree
 }
 
 // rawManifest is the YAML deserialization target.

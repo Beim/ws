@@ -29,7 +29,10 @@ func SetContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bo
 		return err
 	}
 
-	repos := resolveContextRepos(m, wsHome, filter)
+	repos, err := resolveContextRepos(m, wsHome, filter, includeWorktrees)
+	if err != nil {
+		return err
+	}
 	if filter == "" || filter == "none" || filter == "reset" {
 		if err := writeContextState(path, "", repos); err != nil {
 			return err
@@ -79,6 +82,49 @@ func AddContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bo
 	return SetContext(m, wsHome, merged, includeWorktrees)
 }
 
+// RemoveContext subtracts groups or repos from the current effective context.
+// The remaining scope is persisted as an explicit repo list.
+func RemoveContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bool) error {
+	removal, err := normalizeContextFilter(m, filter)
+	if err != nil {
+		return err
+	}
+	if removal == "" {
+		return fmt.Errorf("usage: ws context remove [-t|--worktrees|--no-worktrees] <filter>")
+	}
+
+	currentFilter, ok := GetDefaultContext(wsHome)
+	if !ok {
+		return fmt.Errorf("no context set")
+	}
+
+	currentRepos, err := resolveCommandRepos(m, wsHome, currentFilter, includeWorktrees)
+	if err != nil {
+		return err
+	}
+	if len(currentRepos) == 0 {
+		return fmt.Errorf("current context matched no repos")
+	}
+
+	removalRepos, err := resolveCommandRepos(m, wsHome, removal, includeWorktrees)
+	if err != nil {
+		return err
+	}
+	if len(removalRepos) == 0 && removal != "all" {
+		return fmt.Errorf("filter %q matched no repos", removal)
+	}
+
+	remaining := subtractContextRepos(currentRepos, removalRepos)
+	if len(remaining) == 0 {
+		return fmt.Errorf("remove would leave the context empty")
+	}
+
+	// `remove` persists the final effective scope as explicit targets.
+	// Do not re-expand worktrees when writing it back, or a removed
+	// `repo@worktree` target would immediately be added again.
+	return SetContext(m, wsHome, repoFilter(remaining), false)
+}
+
 // GetContext reads the current context filter, or "" if none is set.
 func GetContext(wsHome string) string {
 	state, ok, err := readContextState(filepath.Join(wsHome, contextFile))
@@ -103,26 +149,27 @@ func GetDefaultContext(wsHome string) (string, bool) {
 
 // ShowContext displays the current context.
 func ShowContext(m *manifest.Manifest, wsHome string) {
-	ctx := GetContext(wsHome)
-	if ctx == "" {
-		if resolved, ok := GetDefaultContext(wsHome); ok {
-			fmt.Printf("No context set (%d cloned repos on disk)\n", resolvedContextCount(resolved))
+	state, ok, err := readContextState(filepath.Join(wsHome, contextFile))
+	if err != nil || !ok {
+		fmt.Println("No context set (using all repos)")
+		return
+	}
+
+	if strings.TrimSpace(state.Raw) == "" {
+		if len(state.Resolved) > 0 {
+			fmt.Printf("No context set (%d cloned repos on disk)\n", len(state.Resolved))
 			return
 		}
 		fmt.Println("No context set (using all repos)")
 		return
 	}
-	normalized, err := normalizeContextFilter(m, ctx)
+
+	normalized, err := normalizeContextFilter(m, state.Raw)
 	if err != nil {
-		fmt.Printf("Context: %s (invalid: %v)\n", ctx, err)
+		fmt.Printf("Context: %s (invalid: %v)\n", state.Raw, err)
 		return
 	}
-	if normalized == "" {
-		fmt.Println("No context set (using all repos)")
-		return
-	}
-	repos := resolveContextRepos(m, wsHome, normalized)
-	fmt.Printf("Context: %s (%d repos)\n", normalized, len(repos))
+	fmt.Printf("Context: %s (%d repos)\n", normalized, len(state.Resolved))
 }
 
 // syncReposDir creates/updates a repos/ directory with symlinks to the scoped repos.
@@ -164,14 +211,6 @@ func syncReposDir(wsHome string, repos []manifest.RepoInfo) error {
 	return nil
 }
 
-func resolveContextRepos(m *manifest.Manifest, wsHome, filter string) []manifest.RepoInfo {
-	repos := m.ResolveFilter(filter, wsHome)
-	if filter == "" || filter == "all" {
-		return clonedRepos(repos)
-	}
-	return repos
-}
-
 func normalizeContextFilter(m *manifest.Manifest, filter string) (string, error) {
 	filter = strings.TrimSpace(filter)
 	if filter == "" {
@@ -204,8 +243,11 @@ func normalizeContextFilter(m *manifest.Manifest, filter string) (string, error)
 
 		if _, ok := m.Groups[token]; !ok {
 			if _, ok := active[token]; !ok {
-				invalid = append(invalid, token)
-				continue
+				repoName, selector, worktreeTarget := splitWorktreeToken(token, active)
+				if !worktreeTarget || repoName == "" || selector == "" {
+					invalid = append(invalid, token)
+					continue
+				}
 			}
 		}
 
@@ -245,6 +287,33 @@ func mergeContextFilters(current, addition string) string {
 		}
 	}
 	return strings.Join(merged, ",")
+}
+
+func subtractContextRepos(current, removal []manifest.RepoInfo) []manifest.RepoInfo {
+	if len(current) == 0 || len(removal) == 0 {
+		return current
+	}
+
+	removeSet := make(map[string]bool, len(removal))
+	for _, repo := range removal {
+		removeSet[repo.Name] = true
+	}
+
+	remaining := make([]manifest.RepoInfo, 0, len(current))
+	for _, repo := range current {
+		if !removeSet[repo.Name] {
+			remaining = append(remaining, repo)
+		}
+	}
+	return remaining
+}
+
+func repoFilter(repos []manifest.RepoInfo) string {
+	names := make([]string, 0, len(repos))
+	for _, repo := range repos {
+		names = append(names, repo.Name)
+	}
+	return strings.Join(names, ",")
 }
 
 func readContextState(path string) (contextState, bool, error) {
@@ -292,13 +361,6 @@ func removeLegacyResolvedContext(wsHome string) {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "Warning: could not remove %s: %v\n", legacyResolvedContextFile, err)
 	}
-}
-
-func resolvedContextCount(filter string) int {
-	if filter == "" || filter == manifest.EmptyFilter {
-		return 0
-	}
-	return len(strings.Split(filter, ","))
 }
 
 func clonedRepos(repos []manifest.RepoInfo) []manifest.RepoInfo {
