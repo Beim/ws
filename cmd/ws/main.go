@@ -78,24 +78,28 @@ dispatch:
 
 	switch cmd {
 	case "context":
-		action, filter, worktreesOverride, err := parseContextArgs(args)
+		parsed, err := parseContextArgs(args)
 		if err != nil {
 			fatal(err)
 		}
-		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, worktreesOverride)
-		switch action {
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, parsed.WorktreesOverride)
+		switch parsed.Action {
 		case "show":
 			command.ShowContext(m, wsHome)
 		case "set":
-			if err := command.SetContext(m, wsHome, filter, includeWorktrees); err != nil {
+			if err := command.SetContext(m, wsHome, parsed.Filter, includeWorktrees); err != nil {
 				fatal(err)
 			}
 		case "add":
-			if err := command.AddContext(m, wsHome, filter, includeWorktrees); err != nil {
+			if err := command.AddContext(m, wsHome, parsed.Filter, includeWorktrees); err != nil {
 				fatal(err)
 			}
 		case "remove":
-			if err := command.RemoveContext(m, wsHome, filter, includeWorktrees); err != nil {
+			if err := command.RemoveContext(m, wsHome, parsed.Filter, includeWorktrees); err != nil {
+				fatal(err)
+			}
+		case "save":
+			if err := command.SaveContextGroup(m, wsHome, parsed.Group, parsed.Local); err != nil {
 				fatal(err)
 			}
 		}
@@ -491,24 +495,70 @@ func filterArg(args []string, defaultFilter string, hasDefaultFilter bool) strin
 	return ""
 }
 
-func parseContextArgs(args []string) (action string, filter string, worktreesOverride command.WorktreesOverride, err error) {
+type contextArgs struct {
+	Action            string
+	Filter            string
+	Group             string
+	Local             bool
+	WorktreesOverride command.WorktreesOverride
+}
+
+func parseContextArgs(args []string) (contextArgs, error) {
+	var parsed contextArgs
 	filtered, worktreesOverride := command.StripWorktreesFlags(args)
+	parsed.WorktreesOverride = worktreesOverride
+
+	var tokens []string
 	for _, arg := range filtered {
-		if strings.HasPrefix(arg, "-") {
-			return "", "", command.WorktreesOverride{}, fmt.Errorf("unknown context flag: %s", arg)
+		if arg == "--local" {
+			if parsed.Local {
+				return contextArgs{}, fmt.Errorf("--local may only be provided once")
+			}
+			parsed.Local = true
+			continue
 		}
+		if strings.HasPrefix(arg, "-") {
+			return contextArgs{}, fmt.Errorf("unknown context flag: %s", arg)
+		}
+		tokens = append(tokens, arg)
 	}
 
-	if len(filtered) == 0 {
-		return "show", "", worktreesOverride, nil
-	}
-	if filtered[0] == "add" || filtered[0] == "remove" {
-		if len(filtered) == 1 {
-			return "", "", command.WorktreesOverride{}, fmt.Errorf("usage: ws context %s [-t|--worktrees|--no-worktrees] <filter>", filtered[0])
+	if len(tokens) == 0 {
+		if parsed.Local {
+			return contextArgs{}, fmt.Errorf("--local is only valid with ws context save")
 		}
-		return filtered[0], strings.Join(filtered[1:], ","), worktreesOverride, nil
+		parsed.Action = "show"
+		return parsed, nil
 	}
-	return "set", strings.Join(filtered, ","), worktreesOverride, nil
+
+	action := "set"
+	switch tokens[0] {
+	case "set", "add", "remove", "save":
+		action = tokens[0]
+		tokens = tokens[1:]
+	}
+	parsed.Action = action
+
+	if action == "save" {
+		if parsed.WorktreesOverride.Set {
+			return contextArgs{}, fmt.Errorf("ws context save does not accept -t|--worktrees|--no-worktrees")
+		}
+		if len(tokens) != 1 {
+			return contextArgs{}, fmt.Errorf("usage: ws context save [--local] <group>")
+		}
+		parsed.Group = strings.TrimSpace(tokens[0])
+		return parsed, nil
+	}
+
+	if parsed.Local {
+		return contextArgs{}, fmt.Errorf("--local is only valid with ws context save")
+	}
+	if len(tokens) == 0 {
+		return contextArgs{}, fmt.Errorf("usage: ws context %s [-t|--worktrees|--no-worktrees] <filter>", action)
+	}
+
+	parsed.Filter = strings.Join(tokens, ",")
+	return parsed, nil
 }
 
 func findWorkspaceHome(override string) (string, error) {
@@ -577,6 +627,8 @@ Commands:
                          Add groups or repos to the existing context
   context remove [-t|--worktrees|--no-worktrees] <filter>
                          Remove groups or repos from the existing context
+  context save [--local] <group>
+                         Persist the current context as a named group
 
 Any unrecognized command is run across repos:
   ws git status          Run "git status" in all repos

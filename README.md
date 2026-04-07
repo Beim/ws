@@ -207,6 +207,8 @@ ws context add [-t|--worktrees|--no-worktrees] <filter>
                           Extend the current context
 ws context remove [-t|--worktrees|--no-worktrees] <filter>
                           Remove repos from the current context
+ws context save [--local] <group>
+                          Save the current context as a named group
 ws cd [repo[@worktree]] [--worktree|-t <selector>]
                           Print repo path (or workspace root)
 ws init                   Emit shell integration and completion
@@ -267,6 +269,8 @@ That makes the workspace repo useful as an agent entry point:
 - run `ws open` when you want to open the current generated workspace in VS Code
 - run `ws context add repo-x` when you want to widen that scope without replacing it
 - run `ws context remove repo-x` when you want to narrow the current scope without rebuilding it from scratch
+- run `ws context save focus` when you want to snapshot the current scope into `manifest.yml`
+- run `ws context save --local scratch` when the saved group should live only in `manifest.local.yml`
 - use the workspace repo as the control plane and `.scope/` as the narrowed filesystem view for agents
 - keep the shared manifest committed while local context stays in ignored files
 
@@ -362,6 +366,9 @@ Merge rules:
 - `exclude`: additive
 - `groups`: local replaces same-name groups, adds new ones
 - `root`, `workspace`, and `worktrees`: local overrides when set
+
+`ws context save <group>` writes the current context into `manifest.yml`.
+Use `ws context save --local <group>` when the saved group should live only in `manifest.local.yml`.
 
 ## Configuration
 

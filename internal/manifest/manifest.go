@@ -111,7 +111,7 @@ func parse(data []byte, requireRoot bool) (*Manifest, error) {
 		m.Groups = make(map[string][]string)
 	}
 	for name := range m.Groups {
-		if err := validateName(name); err != nil {
+		if err := ValidateName(name); err != nil {
 			return nil, fmt.Errorf("group %q: %w", name, err)
 		}
 	}
@@ -122,7 +122,7 @@ func parse(data []byte, requireRoot bool) (*Manifest, error) {
 
 	// Repos: handle nil values (bare YAML entries like "my-repo:")
 	for name, cfg := range raw.Repos {
-		if err := validateName(name); err != nil {
+		if err := ValidateName(name); err != nil {
 			return nil, fmt.Errorf("repo %q: %w", name, err)
 		}
 		rc := RepoConfig{}
@@ -138,8 +138,9 @@ func parse(data []byte, requireRoot bool) (*Manifest, error) {
 	return m, nil
 }
 
-// validateName ensures a name is safe to use as a directory component.
-func validateName(name string) error {
+// ValidateName ensures a repo or group name is safe to use as a manifest key
+// and directory component.
+func ValidateName(name string) error {
 	if name == "" || name == "." || name == ".." {
 		return fmt.Errorf("invalid name")
 	}

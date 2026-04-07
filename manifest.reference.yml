@@ -184,3 +184,7 @@ exclude:
 #
 #   groups:
 #     my-project: [api-server, my-experiment]
+#
+# You can also snapshot the current context into a group with:
+#   ws context save backend-focus
+#   ws context save --local my-scratch-scope

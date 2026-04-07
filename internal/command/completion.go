@@ -160,11 +160,16 @@ func completeContext(m *manifest.Manifest, args []string, current int) Completio
 	currentWord := args[current]
 
 	var nonFlags []string
+	seenLocal := false
 	for i, arg := range args {
 		if i == current {
 			continue
 		}
 		if hasFlag(flags, arg) {
+			continue
+		}
+		if arg == "--local" {
+			seenLocal = true
 			continue
 		}
 		if strings.HasPrefix(arg, "-") {
@@ -175,7 +180,15 @@ func completeContext(m *manifest.Manifest, args []string, current int) Completio
 
 	if len(nonFlags) == 0 {
 		values := append(flags, filterSuggestions(m)...)
-		values = append(values, "none", "reset", "add", "remove")
+		values = append(values, "none", "reset", "add", "remove", "save")
+		return finalizeCompletion(values, currentWord, false)
+	}
+
+	if nonFlags[0] == "save" {
+		values := []string{}
+		if !seenLocal {
+			values = append(values, "--local")
+		}
 		return finalizeCompletion(values, currentWord, false)
 	}
 

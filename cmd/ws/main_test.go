@@ -67,85 +67,111 @@ printf '%s\n' "${COMPREPLY[@]}"
 }
 
 func TestParseContextArgs_Show(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs(nil)
+	parsed, err := parseContextArgs(nil)
 	require.NoError(t, err)
-	assert.Equal(t, "show", action)
-	assert.Equal(t, "", filter)
-	assert.False(t, worktrees.Set)
+	assert.Equal(t, "show", parsed.Action)
+	assert.Equal(t, "", parsed.Filter)
+	assert.False(t, parsed.WorktreesOverride.Set)
 }
 
 func TestParseContextArgs_Set(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs([]string{"backend"})
+	parsed, err := parseContextArgs([]string{"backend"})
 	require.NoError(t, err)
-	assert.Equal(t, "set", action)
-	assert.Equal(t, "backend", filter)
-	assert.False(t, worktrees.Set)
+	assert.Equal(t, "set", parsed.Action)
+	assert.Equal(t, "backend", parsed.Filter)
+	assert.False(t, parsed.WorktreesOverride.Set)
 }
 
 func TestParseContextArgs_Add(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs([]string{"add", "backend", "repo-a"})
+	parsed, err := parseContextArgs([]string{"add", "backend", "repo-a"})
 	require.NoError(t, err)
-	assert.Equal(t, "add", action)
-	assert.Equal(t, "backend,repo-a", filter)
-	assert.False(t, worktrees.Set)
+	assert.Equal(t, "add", parsed.Action)
+	assert.Equal(t, "backend,repo-a", parsed.Filter)
+	assert.False(t, parsed.WorktreesOverride.Set)
 }
 
 func TestParseContextArgs_SetWithWorktreesFlag(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs([]string{"-t", "backend"})
+	parsed, err := parseContextArgs([]string{"-t", "backend"})
 	require.NoError(t, err)
-	assert.Equal(t, "set", action)
-	assert.Equal(t, "backend", filter)
-	assert.True(t, worktrees.Set)
-	assert.True(t, worktrees.Value)
+	assert.Equal(t, "set", parsed.Action)
+	assert.Equal(t, "backend", parsed.Filter)
+	assert.True(t, parsed.WorktreesOverride.Set)
+	assert.True(t, parsed.WorktreesOverride.Value)
 }
 
 func TestParseContextArgs_Remove(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs([]string{"remove", "backend", "repo-a"})
+	parsed, err := parseContextArgs([]string{"remove", "backend", "repo-a"})
 	require.NoError(t, err)
-	assert.Equal(t, "remove", action)
-	assert.Equal(t, "backend,repo-a", filter)
-	assert.False(t, worktrees.Set)
+	assert.Equal(t, "remove", parsed.Action)
+	assert.Equal(t, "backend,repo-a", parsed.Filter)
+	assert.False(t, parsed.WorktreesOverride.Set)
 }
 
 func TestParseContextArgs_RemoveWithWorktreesFlag(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs([]string{"remove", "-t", "backend", "repo-a"})
+	parsed, err := parseContextArgs([]string{"remove", "-t", "backend", "repo-a"})
 	require.NoError(t, err)
-	assert.Equal(t, "remove", action)
-	assert.Equal(t, "backend,repo-a", filter)
-	assert.True(t, worktrees.Set)
-	assert.True(t, worktrees.Value)
+	assert.Equal(t, "remove", parsed.Action)
+	assert.Equal(t, "backend,repo-a", parsed.Filter)
+	assert.True(t, parsed.WorktreesOverride.Set)
+	assert.True(t, parsed.WorktreesOverride.Value)
 }
 
 func TestParseContextArgs_AddWithWorktreesFlag(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs([]string{"add", "-t", "backend", "repo-a"})
+	parsed, err := parseContextArgs([]string{"add", "-t", "backend", "repo-a"})
 	require.NoError(t, err)
-	assert.Equal(t, "add", action)
-	assert.Equal(t, "backend,repo-a", filter)
-	assert.True(t, worktrees.Set)
-	assert.True(t, worktrees.Value)
+	assert.Equal(t, "add", parsed.Action)
+	assert.Equal(t, "backend,repo-a", parsed.Filter)
+	assert.True(t, parsed.WorktreesOverride.Set)
+	assert.True(t, parsed.WorktreesOverride.Value)
 }
 
 func TestParseContextArgs_SetWithNoWorktreesFlag(t *testing.T) {
-	action, filter, worktrees, err := parseContextArgs([]string{"--no-worktrees", "backend"})
+	parsed, err := parseContextArgs([]string{"--no-worktrees", "backend"})
 	require.NoError(t, err)
-	assert.Equal(t, "set", action)
-	assert.Equal(t, "backend", filter)
-	assert.True(t, worktrees.Set)
-	assert.False(t, worktrees.Value)
+	assert.Equal(t, "set", parsed.Action)
+	assert.Equal(t, "backend", parsed.Filter)
+	assert.True(t, parsed.WorktreesOverride.Set)
+	assert.False(t, parsed.WorktreesOverride.Value)
+}
+
+func TestParseContextArgs_Save(t *testing.T) {
+	parsed, err := parseContextArgs([]string{"save", "focus"})
+	require.NoError(t, err)
+	assert.Equal(t, "save", parsed.Action)
+	assert.Equal(t, "focus", parsed.Group)
+	assert.False(t, parsed.Local)
+}
+
+func TestParseContextArgs_SaveLocal(t *testing.T) {
+	parsed, err := parseContextArgs([]string{"save", "--local", "focus"})
+	require.NoError(t, err)
+	assert.Equal(t, "save", parsed.Action)
+	assert.Equal(t, "focus", parsed.Group)
+	assert.True(t, parsed.Local)
+}
+
+func TestParseContextArgs_SaveRejectsWorktreesFlag(t *testing.T) {
+	_, err := parseContextArgs([]string{"save", "-t", "focus"})
+	require.Error(t, err)
+}
+
+func TestParseContextArgs_RejectsLocalWithoutSave(t *testing.T) {
+	_, err := parseContextArgs([]string{"set", "--local", "backend"})
+	require.Error(t, err)
 }
 
 func TestParseContextArgs_AddRequiresFilter(t *testing.T) {
-	_, _, _, err := parseContextArgs([]string{"add"})
+	_, err := parseContextArgs([]string{"add"})
 	require.Error(t, err)
 }
 
 func TestParseContextArgs_RemoveRequiresFilter(t *testing.T) {
-	_, _, _, err := parseContextArgs([]string{"remove"})
+	_, err := parseContextArgs([]string{"remove"})
 	require.Error(t, err)
 }
 
 func TestParseContextArgs_RejectsUnknownFlag(t *testing.T) {
-	_, _, _, err := parseContextArgs([]string{"--bogus"})
+	_, err := parseContextArgs([]string{"--bogus"})
 	require.Error(t, err)
 }
 
