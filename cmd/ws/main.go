@@ -13,10 +13,11 @@ import (
 )
 
 const commandFallbackSentinel = "__ws_complete_commands__"
+const commandHelpSummaryIndent = 25
 
 func main() {
 	args := os.Args[1:]
-	cmd := "help"
+	cmd := command.CommandHelp
 	var wsHomeOverride string
 	var globalWorktrees command.WorktreesOverride
 
@@ -44,7 +45,7 @@ dispatch:
 		args = args[1:]
 	}
 
-	if cmd == "init" {
+	if cmd == command.CommandInit {
 		fmt.Print(shellInit())
 		return
 	}
@@ -52,11 +53,11 @@ dispatch:
 		runCompletion(args)
 		return
 	}
-	if cmd == "help" || cmd == "--help" || cmd == "-h" {
+	if cmd == command.CommandHelp || cmd == "--help" || cmd == "-h" {
 		usage()
 		return
 	}
-	if cmd == "version" || cmd == "--version" {
+	if cmd == command.CommandVersion || cmd == "--version" {
 		fmt.Println(version.String())
 		return
 	}
@@ -77,7 +78,7 @@ dispatch:
 	defaultWorktrees := m.Worktrees
 
 	switch cmd {
-	case "context":
+	case command.CommandContext:
 		parsed, err := parseContextArgs(args)
 		if err != nil {
 			fatal(err)
@@ -104,7 +105,7 @@ dispatch:
 			}
 		}
 
-	case "cd":
+	case command.CommandCD:
 		if len(args) == 0 {
 			fmt.Println(wsHome)
 		} else {
@@ -135,7 +136,7 @@ dispatch:
 			fmt.Println(path)
 		}
 
-	case "setup":
+	case command.CommandSetup:
 		installShell := false
 		var filterArgs []string
 		for _, a := range args {
@@ -150,7 +151,7 @@ dispatch:
 			fatal(err)
 		}
 
-	case "open":
+	case command.CommandOpen:
 		if len(args) > 0 {
 			fatal(fmt.Errorf("usage: ws open"))
 		}
@@ -158,7 +159,7 @@ dispatch:
 			fatal(err)
 		}
 
-	case "list":
+	case command.CommandList:
 		showAll := false
 		args, showAll = stripBoolFlag(args, "--all", "-a")
 		args, localWorktrees := command.StripWorktreesFlags(args)
@@ -170,7 +171,7 @@ dispatch:
 			fatal(err)
 		}
 
-	case "ll":
+	case command.CommandLL:
 		args, localWorktrees := command.StripWorktreesFlags(args)
 		filter := filterArg(args, defaultFilter, hasDefaultFilter)
 		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
@@ -178,13 +179,13 @@ dispatch:
 			fatal(err)
 		}
 
-	case "fetch":
+	case command.CommandFetch:
 		filter := filterArg(args, defaultFilter, hasDefaultFilter)
 		if err := command.Fetch(m, wsHome, filter); err != nil {
 			fatal(err)
 		}
 
-	case "pull":
+	case command.CommandPull:
 		args, localWorktrees := command.StripWorktreesFlags(args)
 		filter := filterArg(args, defaultFilter, hasDefaultFilter)
 		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
@@ -606,30 +607,16 @@ func findWorkspaceHome(override string) (string, error) {
 }
 
 func usage() {
-	fmt.Print(`Usage: ws [-w <path>] <command> [args]
+	fmt.Print(usageText())
+}
 
-Commands:
-  init                   Emit shell integration and completion
-  ll [filter] [-t|--worktrees|--no-worktrees]
-                         Dashboard: branch, dirty, last commit
-  cd [repo[@worktree]] [--worktree|-t <selector>]
-                         Print repo path (no arg = workspace root)
-  setup [filter]         Clone missing repos
-  open                   Open the current VS Code workspace
-  list [--all] [-t|--worktrees|--no-worktrees]
-                         Show repos in manifest (--all includes excluded)
-  fetch [filter]         Fetch all repos
-  pull [filter] [-t|--worktrees|--no-worktrees]
-                         Pull manifest checkouts or all discovered worktrees
-  context [-t|--worktrees|--no-worktrees] [filter]
-                         Set default filter (no arg = show, "none" = clear)
-  context add [-t|--worktrees|--no-worktrees] <filter>
-                         Add groups or repos to the existing context
-  context remove [-t|--worktrees|--no-worktrees] <filter>
-                         Remove groups or repos from the existing context
-  context save [--local] <group>
-                         Persist the current context as a named group
-
+func usageText() string {
+	var b strings.Builder
+	b.WriteString("Usage: ws [-w <path>] <command> [args]\n\nCommands:\n")
+	for _, entry := range command.BuiltinUsageEntries() {
+		writeUsageEntry(&b, entry)
+	}
+	b.WriteString(`
 Any unrecognized command is run across repos:
   ws git status          Run "git status" in all repos
   ws -t git status
@@ -647,6 +634,15 @@ Filters:
   <group>,<group>        Comma-separated groups
   <repo>                 Individual repo name
 `)
+	return b.String()
+}
+
+func writeUsageEntry(b *strings.Builder, entry command.HelpEntry) {
+	if len(entry.Usage) <= commandHelpSummaryIndent-2 {
+		fmt.Fprintf(b, "  %-*s %s\n", commandHelpSummaryIndent-2, entry.Usage, entry.Description)
+		return
+	}
+	fmt.Fprintf(b, "  %s\n%*s%s\n", entry.Usage, commandHelpSummaryIndent, "", entry.Description)
 }
 
 func loadManifestForCompletion(words []string) *manifest.Manifest {

@@ -66,6 +66,15 @@ printf '%s\n' "${COMPREPLY[@]}"
 	assert.Contains(t, strings.Fields(string(out)), "branch")
 }
 
+func TestUsageTextIncludesSharedCommandHelp(t *testing.T) {
+	text := usageText()
+
+	assert.Contains(t, text, "context set [-t|--worktrees|--no-worktrees] <filter>")
+	assert.Contains(t, text, "Persist the current context as a named group")
+	assert.NotContains(t, text, "\n  help ")
+	assert.NotContains(t, text, "\n  version ")
+}
+
 func TestParseContextArgs_Show(t *testing.T) {
 	parsed, err := parseContextArgs(nil)
 	require.NoError(t, err)

@@ -7,20 +7,6 @@ import (
 	"github.com/dtuit/ws/internal/manifest"
 )
 
-var builtInCommands = []string{
-	"init",
-	"help",
-	"version",
-	"ll",
-	"cd",
-	"setup",
-	"open",
-	"list",
-	"fetch",
-	"pull",
-	"context",
-}
-
 // CompletionResult describes completion candidates and any shell fallback.
 type CompletionResult struct {
 	Values           []string
@@ -47,7 +33,7 @@ func Complete(m *manifest.Manifest, words []string, current int) CompletionResul
 	}
 
 	if commandIndex >= len(words) || current == commandIndex {
-		values := append(globalFlagSuggestions(), builtInCommands...)
+		values := append(globalFlagSuggestions(), BuiltinCommandNames()...)
 		values = append(values, filterSuggestions(m)...)
 		return finalizeCompletion(values, currentWord, true)
 	}
@@ -57,9 +43,9 @@ func Complete(m *manifest.Manifest, words []string, current int) CompletionResul
 	argIndex := current - commandIndex - 1
 
 	switch cmd {
-	case "help", "version", "init":
+	case CommandHelp, CommandVersion, CommandInit:
 		return CompletionResult{}
-	case "cd":
+	case CommandCD:
 		if argIndex == 0 {
 			return finalizeCompletion(repoSuggestions(m), currentWord, false)
 		}
@@ -67,22 +53,22 @@ func Complete(m *manifest.Manifest, words []string, current int) CompletionResul
 			return finalizeCompletion([]string{"--worktree", "-t"}, currentWord, false)
 		}
 		return CompletionResult{}
-	case "list":
+	case CommandList:
 		values := append([]string{"--all", "-a"}, worktreesFlagSuggestions()...)
 		return finalizeCompletion(values, currentWord, false)
-	case "setup":
+	case CommandSetup:
 		values := append([]string{"--install-shell"}, filterSuggestions(m)...)
 		return finalizeCompletion(values, currentWord, false)
-	case "open":
+	case CommandOpen:
 		return CompletionResult{}
-	case "ll", "pull":
+	case CommandLL, CommandPull:
 		return completeFilterCommand(m, args, argIndex, worktreesFlagSuggestions())
-	case "fetch":
+	case CommandFetch:
 		if argIndex == 0 {
 			return finalizeCompletion(filterSuggestions(m), currentWord, false)
 		}
 		return CompletionResult{}
-	case "context":
+	case CommandContext:
 		return completeContext(m, args, argIndex)
 	case "--":
 		return completePassthrough(m, args, argIndex)
