@@ -71,6 +71,7 @@ func TestUsageTextIncludesSharedCommandHelp(t *testing.T) {
 	text := command.UsageText()
 
 	assert.Contains(t, text, "context set <filter>")
+	assert.Contains(t, text, "context refresh [-t|--worktrees|--no-worktrees]")
 	assert.Contains(t, text, "ctx [filter]")
 	assert.Contains(t, text, "ll [filter]")
 	assert.Contains(t, text, "ll [--branches|-b] [filter]")
@@ -195,6 +196,27 @@ func TestParseContextArgs_SaveLocal(t *testing.T) {
 
 func TestParseContextArgs_SaveRejectsWorktreesFlag(t *testing.T) {
 	_, err := parseContextArgs([]string{"save", "-t", "focus"})
+	require.Error(t, err)
+}
+
+func TestParseContextArgs_Refresh(t *testing.T) {
+	parsed, err := parseContextArgs([]string{"refresh"})
+	require.NoError(t, err)
+	assert.Equal(t, "refresh", parsed.Action)
+	assert.Equal(t, "", parsed.Filter)
+	assert.False(t, parsed.Local)
+}
+
+func TestParseContextArgs_RefreshWithWorktreesFlag(t *testing.T) {
+	parsed, err := parseContextArgs([]string{"refresh", "-t"})
+	require.NoError(t, err)
+	assert.Equal(t, "refresh", parsed.Action)
+	assert.True(t, parsed.WorktreesOverride.Set)
+	assert.True(t, parsed.WorktreesOverride.Value)
+}
+
+func TestParseContextArgs_RefreshRejectsExtraArgs(t *testing.T) {
+	_, err := parseContextArgs([]string{"refresh", "backend"})
 	require.Error(t, err)
 }
 

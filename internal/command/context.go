@@ -15,6 +15,23 @@ const scopeDir = ".scope"
 // SetContext sets the default filter, regenerates the VS Code workspace,
 // and updates the repos/ symlink directory to match.
 func SetContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bool) error {
+	return applyContext(m, wsHome, filter, includeWorktrees, false)
+}
+
+// RefreshContext re-resolves the stored context filter and rebuilds the scope.
+func RefreshContext(m *manifest.Manifest, wsHome string, includeWorktrees bool) error {
+	state, ok, err := loadStoredContextState(wsHome)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("no context set")
+	}
+
+	return applyContext(m, wsHome, state.Raw, includeWorktrees, true)
+}
+
+func applyContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees, refresh bool) error {
 	filter, err := normalizeContextFilter(m, filter)
 	if err != nil {
 		return err
@@ -28,7 +45,12 @@ func SetContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bo
 		if err := persistContextState(wsHome, "", repos); err != nil {
 			return err
 		}
-		fmt.Println("Context cleared.")
+		if refresh {
+			fmt.Printf("Context refreshed (no saved filter, %d repos)\n", len(repos))
+			fmt.Printf("Resolved: %s\n", formatResolvedContextRepos(repos))
+		} else {
+			fmt.Println("Context cleared.")
+		}
 		if err := syncReposDir(wsHome, repos); err != nil {
 			return err
 		}
@@ -42,7 +64,11 @@ func SetContext(m *manifest.Manifest, wsHome, filter string, includeWorktrees bo
 	if err := persistContextState(wsHome, filter, repos); err != nil {
 		return err
 	}
-	fmt.Printf("Context set to %q (%d repos)\n", filter, len(repos))
+	if refresh {
+		fmt.Printf("Context refreshed from %q (%d repos)\n", filter, len(repos))
+	} else {
+		fmt.Printf("Context set to %q (%d repos)\n", filter, len(repos))
+	}
 	fmt.Printf("Resolved: %s\n", formatResolvedContextRepos(repos))
 
 	if err := syncReposDir(wsHome, repos); err != nil {

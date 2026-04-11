@@ -170,6 +170,98 @@ repos:
 	assert.Contains(t, output, "Resolved: repo-a, repo-b")
 }
 
+func TestRefreshContext_RequiresExistingContext(t *testing.T) {
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+`)
+	require.NoError(t, err)
+
+	err = RefreshContext(m, wsHome, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no context set")
+}
+
+func TestRefreshContext_ReresolvesDynamicFilter(t *testing.T) {
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+  repo-b:
+`)
+	require.NoError(t, err)
+
+	repoA := filepath.Join(wsHome, "repos", "repo-a")
+	repoB := filepath.Join(wsHome, "repos", "repo-b")
+	initCheckout(t, repoA)
+	initCheckout(t, repoB)
+
+	runGit(t, repoA, "config", "user.name", "Other User")
+	runGit(t, repoA, "config", "user.email", "other@example.com")
+	runGit(t, repoB, "config", "user.name", "Other User")
+	runGit(t, repoB, "config", "user.email", "other@example.com")
+
+	require.NoError(t, os.WriteFile(filepath.Join(repoA, "dirty.txt"), []byte("dirty\n"), 0644))
+	require.NoError(t, SetContext(m, wsHome, dirtyFilterToken, false))
+
+	require.NoError(t, os.Remove(filepath.Join(repoA, "dirty.txt")))
+	require.NoError(t, os.WriteFile(filepath.Join(repoB, "dirty.txt"), []byte("dirty\n"), 0644))
+
+	output := captureCommandStdout(t, func() {
+		require.NoError(t, RefreshContext(m, wsHome, false))
+	})
+
+	state := readStoredContext(t, wsHome)
+	assert.Equal(t, dirtyFilterToken, state.Raw)
+	assert.Equal(t, []string{"repo-b"}, state.Resolved)
+	assert.Contains(t, output, `Context refreshed from "dirty" (1 repos)`)
+	assert.Contains(t, output, "Resolved: repo-b")
+}
+
+func TestRefreshContext_ReresolvesWorktrees(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+repos:
+  repo:
+`)
+	require.NoError(t, err)
+
+	repoDir := filepath.Join(wsHome, "repos", "repo")
+	worktreeDir := filepath.Join(wsHome, "repo-feature")
+	initCheckout(t, repoDir)
+
+	require.NoError(t, SetContext(m, wsHome, "repo", true))
+
+	runGit(t, repoDir, "worktree", "add", "-b", "feature", worktreeDir)
+
+	output := captureCommandStdout(t, func() {
+		require.NoError(t, RefreshContext(m, wsHome, true))
+	})
+
+	state := readStoredContext(t, wsHome)
+	assert.Equal(t, "repo", state.Raw)
+	assert.Equal(t, []string{"repo", "repo@repo-feature"}, state.Resolved)
+	assertScopeEntries(t, wsHome, "repo", "repo@repo-feature")
+	assert.Contains(t, output, `Context refreshed from "repo" (2 repos)`)
+	assert.Contains(t, output, "Resolved: repo, repo@repo-feature")
+}
+
 func TestSetContext_ActiveIncludesDirtyAndRecentRepos(t *testing.T) {
 	wsHome := t.TempDir()
 	m, err := parseManifestYAML(`

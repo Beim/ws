@@ -192,6 +192,7 @@ repos:
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "add")
 	assert.Contains(t, result.Values, "remove")
+	assert.Contains(t, result.Values, "refresh")
 	assert.Contains(t, result.Values, "active")
 	assert.Contains(t, result.Values, "dirty")
 	assert.Contains(t, result.Values, "none")
@@ -249,6 +250,26 @@ repos:
 	assert.Contains(t, result.Values, "-t")
 	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.NotContains(t, result.Values, "reset")
+}
+
+func TestCompleteContextRefreshDoesNotSuggestFilters(t *testing.T) {
+	m, err := parseManifestYAML(`
+remotes:
+  default: git@example.com
+groups:
+  ai: [repo-a]
+repos:
+  repo-a:
+`)
+	require.NoError(t, err)
+
+	result := Complete(m, []string{"context", "refresh", ""}, 2)
+	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--worktrees")
+	assert.Contains(t, result.Values, "--no-worktrees")
+	assert.NotContains(t, result.Values, "ai")
+	assert.NotContains(t, result.Values, "repo-a")
+	assert.False(t, result.FallbackCommands)
 }
 
 func TestCompleteContextRemoveSuggestsFilters(t *testing.T) {

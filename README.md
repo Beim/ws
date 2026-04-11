@@ -206,6 +206,7 @@ With that loaded, `ws` completes built-in commands, filters, repo names, and fal
 | Narrow the workspace to a group | `ws context backend` |
 | Snapshot active work into the context | `ws context active` |
 | Add one more repo to the current scope | `ws context add web-app` |
+| Re-resolve the saved context | `ws context refresh` |
 | Run a command across a group | `ws backend git status` |
 | Open the generated VS Code workspace | `ws open` |
 | Print the path to a repo or worktree | `ws cd api-server` |
@@ -238,6 +239,8 @@ ws context [filter]
                           Set or show the default filter (none/reset clears)
 ws ctx [filter]           Alias for ws context
 ws open                   Open the generated VS Code workspace
+ws context refresh
+                          Re-resolve the stored context
 ws context add <filter>
                           Extend the current context
 ws context remove <filter>
@@ -312,6 +315,7 @@ Use groups for named subsets. The default `all` filter includes every active rep
 3. rebuilds `.scope/` with symlinks to only the repos in scope
 
 For `ws context all`, `ws context none`, and `ws context reset`, the generated scope only includes repos that are already cloned on disk.
+`ws context refresh` reruns that resolution against the saved raw filter, which is useful after local activity changes or when linked worktrees were added or removed.
 
 That makes the workspace repo useful as an agent entry point:
 
@@ -321,6 +325,7 @@ That makes the workspace repo useful as an agent entry point:
 - run `ws context add repo-x` when you want to widen that scope without replacing it
 - run `ws context add active:1d` when you want to union the current scope with very recent local activity
 - run `ws context remove repo-x` when you want to narrow the current scope without rebuilding it from scratch
+- run `ws context refresh` when a dynamic filter or worktree-aware context needs to be re-resolved
 - run `ws context save focus` when you want to snapshot the current scope into `manifest.yml`
 - run `ws context save --local scratch` when the saved group should live only in `manifest.local.yml`
 - use the workspace repo as the control plane and `.scope/` as the narrowed filesystem view for agents
@@ -331,6 +336,7 @@ Recommended operator and agent loop:
 1. From the workspace root, run `ws context <filter>`.
    To widen an existing scope, use `ws context add <filter>`.
    To narrow the current scope, use `ws context remove <filter>`.
+   To re-resolve the saved filter after activity or worktree changes, use `ws context refresh`.
 2. Verify the scope with `ws ll` or `ws list`.
 3. Start the agent from `.scope/` when you want filesystem visibility to match that context.
 4. Return to the workspace root when you need to change scope or edit `manifest.yml`.

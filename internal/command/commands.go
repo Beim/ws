@@ -119,6 +119,7 @@ var builtinCommands = []BuiltinCommand{
 			{Usage: "context [filter]", Description: "Set default filter (no arg = show, " + ContextClearUsage + " = clear)"},
 			{Usage: "ctx [filter]", Description: "Alias for context"},
 			{Usage: "context set <filter>", Description: "Explicit form of context set"},
+			{Usage: "context refresh [" + WorktreesFlagUsage + "]", Description: "Re-resolve the stored context and rebuild scope"},
 			{Usage: "context add <filter>", Description: "Add groups or repos to the existing context"},
 			{Usage: "context remove <filter>", Description: "Remove groups or repos from the existing context"},
 			{Usage: "context save [--local] <group>", Description: "Persist the current context as a named group"},

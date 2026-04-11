@@ -35,6 +35,10 @@ func TestBuiltinUsageEntries(t *testing.T) {
 		Description: "Explicit form of context set",
 	})
 	assert.Contains(t, entries, HelpEntry{
+		Usage:       "context refresh [" + WorktreesFlagUsage + "]",
+		Description: "Re-resolve the stored context and rebuild scope",
+	})
+	assert.Contains(t, entries, HelpEntry{
 		Usage:       "ctx [filter]",
 		Description: "Alias for context",
 	})

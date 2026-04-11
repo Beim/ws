@@ -94,6 +94,10 @@ dispatch:
 			if err := command.SetContext(m, wsHome, parsed.Filter, includeWorktrees); err != nil {
 				fatal(err)
 			}
+		case "refresh":
+			if err := command.RefreshContext(m, wsHome, includeWorktrees); err != nil {
+				fatal(err)
+			}
 		case "add":
 			if err := command.AddContext(m, wsHome, parsed.Filter, includeWorktrees); err != nil {
 				fatal(err)

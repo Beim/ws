@@ -159,7 +159,7 @@ func parseContextArgs(args []string) (contextArgs, error) {
 
 	action := "set"
 	switch tokens[0] {
-	case "set", "add", "remove", "save":
+	case "set", "add", "remove", "save", "refresh":
 		action = tokens[0]
 		tokens = tokens[1:]
 	}
@@ -178,6 +178,12 @@ func parseContextArgs(args []string) (contextArgs, error) {
 
 	if parsed.Local {
 		return contextArgs{}, fmt.Errorf("--local is only valid with ws context save")
+	}
+	if action == "refresh" {
+		if len(tokens) != 0 {
+			return contextArgs{}, fmt.Errorf("usage: ws context refresh [%s]", command.WorktreesFlagUsage)
+		}
+		return parsed, nil
 	}
 	if len(tokens) == 0 {
 		return contextArgs{}, fmt.Errorf("usage: ws context %s [%s] <filter>", action, command.WorktreesFlagUsage)

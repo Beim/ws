@@ -16,6 +16,7 @@ func TestUsageTextIncludesShellCommands(t *testing.T) {
 	assert.Contains(t, text, "--no-worktrees")
 	assert.Contains(t, text, "Context shorthand:")
 	assert.Contains(t, text, "ctx")
+	assert.Contains(t, text, "context refresh")
 	assert.Contains(t, text, "active[:dur]")
 	assert.Contains(t, text, "dirty")
 	assert.Contains(t, text, "mine:<dur>")
