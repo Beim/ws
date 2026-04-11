@@ -26,6 +26,7 @@ repos:
 	assert.Contains(t, result.Values, "ctx")
 	assert.Contains(t, result.Values, "backend")
 	assert.Contains(t, result.Values, "repo-a")
+	assert.Contains(t, result.Values, "auto")
 	assert.Contains(t, result.Values, "--workspace")
 	assert.Contains(t, result.Values, "-t")
 	assert.Contains(t, result.Values, "--no-worktrees")
@@ -189,6 +190,7 @@ repos:
 	assert.Contains(t, result.Values, "--worktrees")
 	assert.Contains(t, result.Values, "add")
 	assert.Contains(t, result.Values, "remove")
+	assert.Contains(t, result.Values, "auto")
 	assert.Contains(t, result.Values, "none")
 	assert.Contains(t, result.Values, "reset")
 }

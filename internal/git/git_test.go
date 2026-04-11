@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dtuit/ws/internal/manifest"
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,22 @@ func addTestWorktree(t *testing.T, repoDir, name, branch string) string {
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git worktree add failed: %s", out)
 	return worktreeDir
+}
+
+func commitEmptyAt(t *testing.T, repoDir, message, name, email string, when time.Time) {
+	t.Helper()
+	cmd := exec.Command("git", "commit", "--allow-empty", "-m", message)
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME="+name,
+		"GIT_AUTHOR_EMAIL="+email,
+		"GIT_COMMITTER_NAME="+name,
+		"GIT_COMMITTER_EMAIL="+email,
+		"GIT_AUTHOR_DATE="+when.UTC().Format(time.RFC3339),
+		"GIT_COMMITTER_DATE="+when.UTC().Format(time.RFC3339),
+	)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git commit failed: %s", out)
 }
 
 func TestStatus_CleanRepo(t *testing.T) {
@@ -140,6 +157,78 @@ func TestStatus_MixedDirtyState(t *testing.T) {
 	assert.True(t, s.Untracked)
 	assert.Contains(t, s.Symbols(), "+")
 	assert.Contains(t, s.Symbols(), "?")
+}
+
+func TestAutoActivity_DirtyRepoMatches(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "dirty-repo")
+	cmd := exec.Command("git", "config", "user.email", "other@example.com")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	cmd = exec.Command("git", "config", "user.name", "Other User")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "dirty.txt"), []byte("dirty"), 0644))
+
+	activity := AutoActivity(manifest.RepoInfo{Name: "dirty-repo", Path: repoDir, Branch: "master"})
+	assert.NoError(t, activity.Err)
+	assert.True(t, activity.Dirty)
+	assert.False(t, activity.RecentLocalCommit)
+	assert.True(t, activity.MatchesAuto())
+}
+
+func TestAutoActivity_RecentLocalCommitMatches(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "recent-repo")
+	cmd := exec.Command("git", "config", "user.email", "local@example.com")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	cmd = exec.Command("git", "config", "user.name", "Local User")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	commitEmptyAt(t, repoDir, "recent work", "Local User", "local@example.com", time.Now().Add(-48*time.Hour))
+
+	activity := AutoActivity(manifest.RepoInfo{Name: "recent-repo", Path: repoDir, Branch: "master"})
+	assert.NoError(t, activity.Err)
+	assert.False(t, activity.Dirty)
+	assert.True(t, activity.RecentLocalCommit)
+	assert.True(t, activity.MatchesAuto())
+}
+
+func TestAutoActivity_OldCommitDoesNotMatch(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "old-repo")
+	cmd := exec.Command("git", "config", "user.email", "old@example.com")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	cmd = exec.Command("git", "config", "user.name", "Old User")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	commitEmptyAt(t, repoDir, "old work", "Old User", "old@example.com", time.Now().Add(-30*24*time.Hour))
+
+	activity := AutoActivity(manifest.RepoInfo{Name: "old-repo", Path: repoDir, Branch: "master"})
+	assert.NoError(t, activity.Err)
+	assert.False(t, activity.Dirty)
+	assert.False(t, activity.RecentLocalCommit)
+	assert.False(t, activity.MatchesAuto())
+}
+
+func TestAutoActivity_LinkedWorktreeDirtyMatches(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := initTestRepo(t, dir, "worktree-repo")
+	cmd := exec.Command("git", "config", "user.email", "other@example.com")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	cmd = exec.Command("git", "config", "user.name", "Other User")
+	cmd.Dir = repoDir
+	require.NoError(t, cmd.Run())
+	worktreeDir := addTestWorktree(t, repoDir, "worktree-feature", "feature/auto")
+	require.NoError(t, os.WriteFile(filepath.Join(worktreeDir, "dirty.txt"), []byte("dirty"), 0644))
+
+	activity := AutoActivity(manifest.RepoInfo{Name: "worktree-repo", Path: repoDir, Branch: "master"})
+	assert.NoError(t, activity.Err)
+	assert.True(t, activity.Dirty)
+	assert.True(t, activity.MatchesAuto())
 }
 
 func TestStatus_DetachedHead(t *testing.T) {

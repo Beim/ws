@@ -47,6 +47,16 @@ type BranchList struct {
 	Err      error
 }
 
+// RepoActivity summarizes whether a repo should be included by the auto filter.
+type RepoActivity struct {
+	Name              string
+	Dirty             bool
+	RecentLocalCommit bool
+	Err               error
+}
+
+const autoRecentWindowDays = 14
+
 // Symbols returns a compact status string like gita: +*?$ for dirty indicators.
 func (s RepoStatus) Symbols() string {
 	var b strings.Builder
@@ -84,6 +94,11 @@ func (s RepoStatus) SyncSymbol() string {
 // IsDirty returns true if the working tree has any local changes.
 func (s RepoStatus) IsDirty() bool {
 	return s.Staged || s.Unstaged || s.Untracked
+}
+
+// MatchesAuto reports whether the repo should be included by the auto filter.
+func (s RepoActivity) MatchesAuto() bool {
+	return s.Dirty || s.RecentLocalCommit
 }
 
 // gitCmd runs a git command in the given directory and returns trimmed stdout.
@@ -235,6 +250,53 @@ func StatusAll(repos []manifest.RepoInfo, maxWorkers int) []RepoStatus {
 	return results
 }
 
+// AutoActivity inspects a repo and its linked worktrees for auto-filter matches.
+func AutoActivity(repo manifest.RepoInfo) RepoActivity {
+	activity := RepoActivity{Name: repo.Name}
+
+	worktrees, err := DiscoverWorktrees(repo)
+	if err != nil {
+		activity.Err = err
+		return activity
+	}
+
+	for _, worktree := range worktrees {
+		dirty, recentLocalCommit, err := autoActivityForCheckout(worktree.Path)
+		if err != nil {
+			activity.Err = err
+			return activity
+		}
+
+		activity.Dirty = activity.Dirty || dirty
+		activity.RecentLocalCommit = activity.RecentLocalCommit || recentLocalCommit
+		if activity.MatchesAuto() {
+			return activity
+		}
+	}
+
+	return activity
+}
+
+// AutoActivityAll inspects repos for auto-filter matches in parallel.
+func AutoActivityAll(repos []manifest.RepoInfo, maxWorkers int) []RepoActivity {
+	results := make([]RepoActivity, len(repos))
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+
+	for i, repo := range repos {
+		wg.Add(1)
+		go func(idx int, r manifest.RepoInfo) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[idx] = AutoActivity(r)
+		}(i, repo)
+	}
+
+	wg.Wait()
+	return results
+}
+
 const localBranchFormat = "%(if)%(HEAD)%(then)*%(else) %(end)\t%(refname:short)\t%(upstream:short)\t%(upstream:track)\t%(subject)\t%(committerdate:relative)"
 
 // LocalBranches queries the local branch list for a single repo/worktree.
@@ -356,4 +418,109 @@ func Clone(repo manifest.RepoInfo) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func autoActivityForCheckout(repoDir string) (bool, bool, error) {
+	if _, err := GitDir(repoDir); err != nil {
+		return false, false, err
+	}
+
+	statusOut, err := gitCmd(repoDir, "status", "--porcelain=v2", "--branch")
+	if err != nil {
+		return false, false, err
+	}
+
+	var status RepoStatus
+	parseStatusV2(&status, statusOut)
+	if status.IsDirty() {
+		return true, false, nil
+	}
+
+	email, name, err := localGitIdentity(repoDir)
+	if err != nil {
+		return false, false, err
+	}
+	if email == "" && name == "" {
+		return false, false, nil
+	}
+
+	recentLocalCommit, err := hasRecentCommitByLocalUser(repoDir, email, name)
+	if err != nil {
+		return false, false, err
+	}
+	return false, recentLocalCommit, nil
+}
+
+func localGitIdentity(repoDir string) (string, string, error) {
+	email, err := gitConfigValue(repoDir, "user.email")
+	if err != nil {
+		return "", "", err
+	}
+
+	name, err := gitConfigValue(repoDir, "user.name")
+	if err != nil {
+		return "", "", err
+	}
+
+	return email, name, nil
+}
+
+func gitConfigValue(repoDir, key string) (string, error) {
+	cmd := exec.Command("git", "config", "--get", key)
+	cmd.Dir = repoDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 && strings.TrimSpace(stderr.String()) == "" {
+			return "", nil
+		}
+		return "", fmt.Errorf("%s: %w", strings.TrimSpace(stderr.String()), err)
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+func hasRecentCommitByLocalUser(repoDir, email, name string) (bool, error) {
+	since := fmt.Sprintf("--since=%d days ago", autoRecentWindowDays)
+	out, err := gitCmdRaw(repoDir, "log", since, "--format=%ce\x1f%cn")
+	if err != nil {
+		if isNoCommitsError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	preferredEmail := strings.TrimSpace(email)
+	fallbackName := strings.TrimSpace(name)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\x1f", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		commitEmail := strings.TrimSpace(parts[0])
+		commitName := strings.TrimSpace(parts[1])
+		if preferredEmail != "" && commitEmail == preferredEmail {
+			return true, nil
+		}
+		if preferredEmail == "" && fallbackName != "" && commitName == fallbackName {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func isNoCommitsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "does not have any commits yet") ||
+		strings.Contains(message, "bad revision 'HEAD'")
 }

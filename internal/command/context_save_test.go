@@ -176,6 +176,20 @@ repos:
 	assert.Contains(t, err.Error(), "no context set")
 }
 
+func TestValidateContextGroupName_RejectsAuto(t *testing.T) {
+	m, err := parseManifestYAML(`
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+`)
+	require.NoError(t, err)
+
+	err = validateContextGroupName(m, autoFilterToken)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reserved filter name")
+}
+
 func TestCompleteContextSuggestsSave(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:

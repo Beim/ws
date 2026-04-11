@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +62,23 @@ repos:
 	require.Error(t, err)
 }
 
+func TestNormalizeContextFilter_AllowsAuto(t *testing.T) {
+	m, err := parseManifestYAML(`
+remotes:
+  default: git@example.com
+groups:
+  backend: [repo-a]
+repos:
+  repo-a:
+  repo-b:
+`)
+	require.NoError(t, err)
+
+	filter, err := normalizeContextFilter(m, "backend,auto,auto")
+	require.NoError(t, err)
+	assert.Equal(t, "backend,auto", filter)
+}
+
 func TestAddContext_MergesWithExistingContext(t *testing.T) {
 	wsHome := t.TempDir()
 	m, err := parseManifestYAML(`
@@ -83,6 +101,89 @@ repos:
 	state := readStoredContext(t, wsHome)
 	assert.Equal(t, "backend,repo-c,frontend", state.Raw)
 	assert.Equal(t, []string{"repo-a", "repo-c", "repo-b"}, state.Resolved)
+}
+
+func TestSetContext_AutoIncludesDirtyAndRecentRepos(t *testing.T) {
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+  repo-b:
+  repo-c:
+`)
+	require.NoError(t, err)
+
+	repoA := filepath.Join(wsHome, "repos", "repo-a")
+	repoB := filepath.Join(wsHome, "repos", "repo-b")
+	repoC := filepath.Join(wsHome, "repos", "repo-c")
+	initCheckout(t, repoA)
+	initCheckout(t, repoB)
+	initCheckout(t, repoC)
+
+	runGit(t, repoA, "config", "user.name", "Other User")
+	runGit(t, repoA, "config", "user.email", "other@example.com")
+	require.NoError(t, os.WriteFile(filepath.Join(repoA, "dirty.txt"), []byte("dirty\n"), 0644))
+
+	runGit(t, repoB, "config", "user.name", "Local User")
+	runGit(t, repoB, "config", "user.email", "local@example.com")
+	commitEmptyAt(t, repoB, "recent work", "Local User", "local@example.com", time.Now().Add(-48*time.Hour))
+
+	runGit(t, repoC, "config", "user.name", "Other User")
+	runGit(t, repoC, "config", "user.email", "other@example.com")
+
+	require.NoError(t, SetContext(m, wsHome, autoFilterToken, false))
+
+	state := readStoredContext(t, wsHome)
+	assert.Equal(t, autoFilterToken, state.Raw)
+	assert.Equal(t, []string{"repo-a", "repo-b"}, state.Resolved)
+	assertScopeEntries(t, wsHome, "repo-a", "repo-b")
+	assertWorkspaceFolders(t, filepath.Join(wsHome, m.Workspace), "~ workspace", "repo-a", "repo-b")
+}
+
+func TestAddContext_AutoCombinesWithExistingContext(t *testing.T) {
+	wsHome := t.TempDir()
+	m, err := parseManifestYAML(`
+root: repos
+workspace: ws.code-workspace
+remotes:
+  default: git@example.com
+repos:
+  repo-a:
+  repo-b:
+  repo-c:
+`)
+	require.NoError(t, err)
+
+	repoA := filepath.Join(wsHome, "repos", "repo-a")
+	repoB := filepath.Join(wsHome, "repos", "repo-b")
+	repoC := filepath.Join(wsHome, "repos", "repo-c")
+	initCheckout(t, repoA)
+	initCheckout(t, repoB)
+	initCheckout(t, repoC)
+
+	runGit(t, repoA, "config", "user.name", "Other User")
+	runGit(t, repoA, "config", "user.email", "other@example.com")
+	require.NoError(t, os.WriteFile(filepath.Join(repoA, "dirty.txt"), []byte("dirty\n"), 0644))
+
+	runGit(t, repoB, "config", "user.name", "Local User")
+	runGit(t, repoB, "config", "user.email", "local@example.com")
+	commitEmptyAt(t, repoB, "recent work", "Local User", "local@example.com", time.Now().Add(-48*time.Hour))
+
+	runGit(t, repoC, "config", "user.name", "Other User")
+	runGit(t, repoC, "config", "user.email", "other@example.com")
+
+	require.NoError(t, SetContext(m, wsHome, "repo-b", false))
+	require.NoError(t, AddContext(m, wsHome, autoFilterToken, false))
+
+	state := readStoredContext(t, wsHome)
+	assert.Equal(t, "repo-b,auto", state.Raw)
+	assert.Equal(t, []string{"repo-b", "repo-a"}, state.Resolved)
+	assertScopeEntries(t, wsHome, "repo-a", "repo-b")
+	assertWorkspaceFolders(t, filepath.Join(wsHome, m.Workspace), "~ workspace", "repo-b", "repo-a")
 }
 
 func TestAddContext_NoExistingContextBehavesLikeSetContext(t *testing.T) {

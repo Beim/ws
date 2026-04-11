@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -8,6 +9,8 @@ import (
 	"github.com/dtuit/ws/internal/git"
 	"github.com/dtuit/ws/internal/manifest"
 )
+
+const autoFilterToken = "auto"
 
 func resolveCommandRepos(m *manifest.Manifest, wsHome, filter string, includeWorktrees bool) ([]manifest.RepoInfo, error) {
 	repos, err := resolveFilterRepos(m, wsHome, filter, false)
@@ -61,6 +64,20 @@ func resolveFilterRepos(m *manifest.Manifest, wsHome, filter string, strict bool
 			continue
 		}
 
+		if token == autoFilterToken {
+			autoRepos, err := resolveAutoRepos(m, wsHome)
+			if err != nil {
+				if strict {
+					return nil, err
+				}
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			}
+			for _, repo := range autoRepos {
+				add(repo)
+			}
+			continue
+		}
+
 		if members, ok := m.Groups[token]; ok {
 			for _, name := range members {
 				cfg, ok := active[name]
@@ -109,6 +126,36 @@ func resolveFilterRepos(m *manifest.Manifest, wsHome, filter string, strict bool
 	}
 
 	return result, nil
+}
+
+func resolveAutoRepos(m *manifest.Manifest, wsHome string) ([]manifest.RepoInfo, error) {
+	candidates := m.AllRepos(wsHome)
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	activity := git.AutoActivityAll(candidates, git.Workers(len(candidates)))
+	matched := make([]manifest.RepoInfo, 0, len(candidates))
+	var failures []string
+
+	for i, state := range activity {
+		switch {
+		case state.Err == nil:
+			if state.MatchesAuto() {
+				matched = append(matched, candidates[i])
+			}
+		case errors.Is(state.Err, git.ErrNotCloned):
+			continue
+		default:
+			failures = append(failures, fmt.Sprintf("%s: %v", candidates[i].Name, state.Err))
+		}
+	}
+
+	if len(failures) > 0 {
+		return matched, fmt.Errorf("auto filter failed for %s", strings.Join(failures, "; "))
+	}
+
+	return matched, nil
 }
 
 func baseRepoInfo(m *manifest.Manifest, wsHome, name string, cfg manifest.RepoConfig, groups []string) manifest.RepoInfo {

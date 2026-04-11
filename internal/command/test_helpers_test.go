@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dtuit/ws/internal/manifest"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +19,15 @@ func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v failed: %s", args, string(output))
+}
+
+func runGitEnv(t *testing.T, dir string, env []string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v failed: %s", args, string(output))
 }
@@ -61,6 +71,20 @@ func initCheckout(t *testing.T, repoPath string) {
 	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("hello\n"), 0644))
 	runGit(t, repoPath, "add", "README.md")
 	runGit(t, repoPath, "commit", "-m", "init")
+}
+
+func commitEmptyAt(t *testing.T, repoPath, message, name, email string, when time.Time) {
+	t.Helper()
+
+	timestamp := when.UTC().Format(time.RFC3339)
+	runGitEnv(t, repoPath, []string{
+		"GIT_AUTHOR_NAME=" + name,
+		"GIT_AUTHOR_EMAIL=" + email,
+		"GIT_COMMITTER_NAME=" + name,
+		"GIT_COMMITTER_EMAIL=" + email,
+		"GIT_AUTHOR_DATE=" + timestamp,
+		"GIT_COMMITTER_DATE=" + timestamp,
+	}, "commit", "--allow-empty", "-m", message)
 }
 
 func assertScopeEntries(t *testing.T, wsHome string, want ...string) {

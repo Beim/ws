@@ -35,6 +35,7 @@ Use -- to escape built-in names:
 
 Filters:
   all                    All active repos (default)
+  auto                   Dirty repos plus local-user commits from last 14 days
   <group>                Group name: ai, eng, db, inf
   <group>,<group>        Comma-separated groups
   <repo>                 Individual repo name

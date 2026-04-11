@@ -271,14 +271,16 @@ func normalizeContextFilter(m *manifest.Manifest, filter string) (string, error)
 		case "all":
 			hasAll = true
 			continue
-		}
-
-		if _, ok := m.Groups[token]; !ok {
-			if _, ok := active[token]; !ok {
-				repoName, selector, worktreeTarget := splitWorktreeToken(token, active)
-				if !worktreeTarget || repoName == "" || selector == "" {
-					invalid = append(invalid, token)
-					continue
+		case autoFilterToken:
+			// Reserved dynamic filter token.
+		default:
+			if _, ok := m.Groups[token]; !ok {
+				if _, ok := active[token]; !ok {
+					repoName, selector, worktreeTarget := splitWorktreeToken(token, active)
+					if !worktreeTarget || repoName == "" || selector == "" {
+						invalid = append(invalid, token)
+						continue
+					}
 				}
 			}
 		}

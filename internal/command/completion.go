@@ -326,7 +326,7 @@ func globalFlagSuggestions() []string {
 }
 
 func filterSuggestions(m *manifest.Manifest) []string {
-	values := []string{"all"}
+	values := []string{"all", autoFilterToken}
 	if m == nil {
 		return values
 	}
@@ -362,19 +362,40 @@ func repoSuggestions(m *manifest.Manifest) []string {
 }
 
 func isFilterToken(m *manifest.Manifest, token string) bool {
-	if token == "all" {
-		return true
-	}
-	if m == nil {
+	if token == "" {
 		return false
 	}
-	if _, ok := m.ActiveRepos()[token]; ok {
-		return true
+
+	var active map[string]manifest.RepoConfig
+	if m != nil {
+		active = m.ActiveRepos()
 	}
-	if repoName, selector, ok := splitWorktreeToken(token, m.ActiveRepos()); ok && repoName != "" && selector != "" {
-		return true
+
+	for _, part := range strings.Split(token, ",") {
+		part = strings.TrimSpace(part)
+		switch part {
+		case "", "all", autoFilterToken:
+			if part != "" {
+				return true
+			}
+			continue
+		}
+
+		if m == nil {
+			continue
+		}
+		if _, ok := active[part]; ok {
+			return true
+		}
+		if repoName, selector, ok := splitWorktreeToken(part, active); ok && repoName != "" && selector != "" {
+			return true
+		}
+		if _, ok := m.Groups[part]; ok {
+			return true
+		}
 	}
-	return m.IsGroupOrRepo(token)
+
+	return false
 }
 
 func hasFlag(flags []string, token string) bool {
