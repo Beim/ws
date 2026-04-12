@@ -35,8 +35,22 @@ func writeWorkspace(m *manifest.Manifest, wsHome string, repos []manifest.RepoIn
 	return nil
 }
 
-// Open opens the generated VS Code workspace file.
-func Open(m *manifest.Manifest, wsHome string) error {
+// ResolveEditor returns the editor command to use, checking (in order):
+// 1. the --editor flag value (if non-empty)
+// 2. the WS_EDITOR environment variable
+// 3. the default "code"
+func ResolveEditor(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if env := os.Getenv("WS_EDITOR"); env != "" {
+		return env
+	}
+	return "code"
+}
+
+// Open opens the generated workspace file with the given editor.
+func Open(m *manifest.Manifest, wsHome string, editor string) error {
 	wsFile := filepath.Join(wsHome, m.Workspace)
 	if _, err := os.Stat(wsFile); err != nil {
 		if os.IsNotExist(err) {
@@ -45,16 +59,16 @@ func Open(m *manifest.Manifest, wsHome string) error {
 		return err
 	}
 
-	codeBin, err := exec.LookPath("code")
+	bin, err := exec.LookPath(editor)
 	if err != nil {
-		return fmt.Errorf("VS Code `code` command not found in PATH")
+		return fmt.Errorf("`%s` command not found in PATH", editor)
 	}
 
-	cmd := exec.Command(codeBin, wsFile)
+	cmd := exec.Command(bin, wsFile)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	fmt.Printf("Opened %s\n", m.Workspace)
+	fmt.Printf("Opened %s with %s\n", m.Workspace, editor)
 	return nil
 }
 
