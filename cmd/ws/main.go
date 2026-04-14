@@ -170,10 +170,11 @@ dispatch:
 		}
 
 	case command.CommandOpen:
+		editor, args := parseEditorFlag(args)
 		if len(args) > 0 {
-			fatal(fmt.Errorf("usage: ws open"))
+			fatal(fmt.Errorf("usage: ws open [--editor <name>]"))
 		}
-		if err := command.Open(m, wsHome); err != nil {
+		if err := command.Open(m, wsHome, command.ResolveEditor(editor)); err != nil {
 			fatal(err)
 		}
 

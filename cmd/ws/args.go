@@ -193,6 +193,20 @@ func parseContextArgs(args []string) (contextArgs, error) {
 	return parsed, nil
 }
 
+func parseEditorFlag(args []string) (string, []string) {
+	var editor string
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		if (args[i] == "--editor" || args[i] == "-e") && i+1 < len(args) {
+			editor = args[i+1]
+			i++
+		} else {
+			rest = append(rest, args[i])
+		}
+	}
+	return editor, rest
+}
+
 func isWorktreesOverrideToken(token string) bool {
 	_, ok := command.ParseWorktreesFlag(token)
 	return ok

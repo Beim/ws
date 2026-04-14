@@ -84,7 +84,7 @@ var builtinCommands = []BuiltinCommand{
 		Name:        CommandOpen,
 		ShowInUsage: true,
 		Help: []HelpEntry{
-			{Usage: CommandOpen, Description: "Open the current VS Code workspace"},
+			{Usage: "open [--editor <name>]", Description: "Open workspace (default: code, or WS_EDITOR)"},
 		},
 		complete: completeNoopCommand,
 	},
