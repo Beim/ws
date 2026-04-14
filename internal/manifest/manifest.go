@@ -16,6 +16,7 @@ type Manifest struct {
 	Workspace     string              // VS Code workspace filename (default "ws.code-workspace")
 	Scopes        []ScopeDirConfig    // generated symlink directories for scoped repo views
 	Worktrees     bool                // default worktree expansion behavior for supported commands
+	Mux           MuxConfig           // terminal multiplexer configuration
 	Remotes       map[string]string   // name → URL prefix ("default" is the fallback)
 	DefaultBranch string              // default branch for all repos
 	Groups        map[string][]string // group name → ordered repo names
@@ -23,6 +24,7 @@ type Manifest struct {
 	Exclude       []string
 	worktreesSet  bool
 	scopesSet     bool
+	muxSet        bool
 }
 
 const (
@@ -55,12 +57,45 @@ type RepoInfo struct {
 	Worktree string // non-empty when this RepoInfo targets a specific linked worktree
 }
 
+// MuxConfig holds terminal multiplexer configuration.
+type MuxConfig struct {
+	Backend string      // "tmux", "zellij", or "" (auto-detect)
+	Session string      // session name override (default: workspace directory name)
+	Windows []MuxWindow // window/tab layout
+}
+
+// MuxWindow describes one window/tab in a multiplexer session.
+type MuxWindow struct {
+	Name   string // tab/window name (required)
+	Dir    string // repo name or relative path
+	Filter string // ws filter string to resolve repos
+	Split  bool   // when filter matches multiple repos, create one pane per repo
+	Cmd    string // command to run in the pane(s)
+	Layout string // pane layout: "tiled", "even-horizontal", "even-vertical"
+}
+
+type rawMuxConfig struct {
+	Backend string         `yaml:"backend"`
+	Session string         `yaml:"session"`
+	Windows []rawMuxWindow `yaml:"windows"`
+}
+
+type rawMuxWindow struct {
+	Name   string `yaml:"name"`
+	Dir    string `yaml:"dir"`
+	Filter string `yaml:"filter"`
+	Split  bool   `yaml:"split"`
+	Cmd    string `yaml:"cmd"`
+	Layout string `yaml:"layout"`
+}
+
 // rawManifest is the YAML deserialization target.
 type rawManifest struct {
 	Root      string                       `yaml:"root"`      // where repos live
 	Workspace string                       `yaml:"workspace"` // VS Code workspace filename
 	Scopes    *[]rawScopeDir               `yaml:"scopes"`    // generated scope symlink directories
 	Worktrees *bool                        `yaml:"worktrees"` // default worktree behavior
+	Mux       *rawMuxConfig                `yaml:"mux"`       // terminal multiplexer config
 	Remotes   map[string]string            `yaml:"remotes"`   // named remotes
 	Branch    string                       `yaml:"branch"`
 	Groups    map[string][]string          `yaml:"groups"`
@@ -132,6 +167,10 @@ func parse(data []byte, requireRoot bool) (*Manifest, error) {
 	if raw.Worktrees != nil {
 		m.Worktrees = *raw.Worktrees
 		m.worktreesSet = true
+	}
+	if raw.Mux != nil {
+		m.Mux = parseMuxConfig(*raw.Mux)
+		m.muxSet = true
 	}
 	if m.DefaultBranch == "" {
 		m.DefaultBranch = "master"
@@ -234,6 +273,10 @@ func (m *Manifest) MergeLocal(path string) error {
 		m.Worktrees = local.Worktrees
 		m.worktreesSet = true
 	}
+	if local.muxSet {
+		m.Mux = local.Mux
+		m.muxSet = true
+	}
 
 	// Remotes: union, local wins on conflict
 	for name, url := range local.Remotes {
@@ -262,6 +305,24 @@ func (m *Manifest) MergeLocal(path string) error {
 	}
 
 	return nil
+}
+
+func parseMuxConfig(raw rawMuxConfig) MuxConfig {
+	cfg := MuxConfig{
+		Backend: raw.Backend,
+		Session: raw.Session,
+	}
+	for _, w := range raw.Windows {
+		cfg.Windows = append(cfg.Windows, MuxWindow{
+			Name:   w.Name,
+			Dir:    w.Dir,
+			Filter: w.Filter,
+			Split:  w.Split,
+			Cmd:    w.Cmd,
+			Layout: w.Layout,
+		})
+	}
+	return cfg
 }
 
 func defaultScopeDirs() []ScopeDirConfig {
