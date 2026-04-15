@@ -220,7 +220,9 @@ func parseEditorFlag(args []string) (string, []string) {
 }
 
 type muxArgs struct {
-	Action string // "attach", "kill", "ls"
+	Action      string // "attach", "kill", "ls", "save"
+	SessionName string // named session config (empty = default)
+	Local       bool   // save to manifest.local.yml instead of manifest.yml
 }
 
 func parseMuxArgs(args []string) (muxArgs, error) {
@@ -229,11 +231,42 @@ func parseMuxArgs(args []string) (muxArgs, error) {
 	}
 	switch args[0] {
 	case "kill":
-		return muxArgs{Action: "kill"}, nil
+		if len(args) > 2 {
+			return muxArgs{}, fmt.Errorf("usage: ws mux kill [session]")
+		}
+		parsed := muxArgs{Action: "kill"}
+		if len(args) > 1 {
+			parsed.SessionName = args[1]
+		}
+		return parsed, nil
 	case "ls", "list":
 		return muxArgs{Action: "ls"}, nil
+	case "save":
+		parsed := muxArgs{Action: "save"}
+		for _, arg := range args[1:] {
+			if arg == "--local" {
+				if parsed.Local {
+					return muxArgs{}, fmt.Errorf("--local may only be provided once")
+				}
+				parsed.Local = true
+				continue
+			}
+			if strings.HasPrefix(arg, "-") {
+				return muxArgs{}, fmt.Errorf("unknown flag: %s", arg)
+			}
+			if parsed.SessionName != "" {
+				return muxArgs{}, fmt.Errorf("usage: ws mux save [--local] [session]")
+			}
+			parsed.SessionName = arg
+		}
+		return parsed, nil
 	default:
-		return muxArgs{}, fmt.Errorf("unknown mux subcommand: %s", args[0])
+		// Not a subcommand — treat as a session name
+		parsed := muxArgs{Action: "attach", SessionName: args[0]}
+		if len(args) > 1 {
+			return muxArgs{}, fmt.Errorf("usage: ws mux [session]")
+		}
+		return parsed, nil
 	}
 }
 

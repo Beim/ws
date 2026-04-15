@@ -236,15 +236,19 @@ dispatch:
 		}
 		switch parsed.Action {
 		case "attach":
-			if err := command.MuxAttachOrCreate(m, wsHome); err != nil {
+			if err := command.MuxAttachOrCreate(m, wsHome, parsed.SessionName); err != nil {
 				fatal(err)
 			}
 		case "kill":
-			if err := command.MuxKill(m, wsHome); err != nil {
+			if err := command.MuxKill(m, wsHome, parsed.SessionName); err != nil {
 				fatal(err)
 			}
 		case "ls":
 			if err := command.MuxList(m, wsHome); err != nil {
+				fatal(err)
+			}
+		case "save":
+			if err := command.MuxSave(m, wsHome, parsed.SessionName, parsed.Local); err != nil {
 				fatal(err)
 			}
 		}

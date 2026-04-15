@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -38,7 +39,8 @@ func (t *tmuxMux) HasSession(name string) (bool, error) {
 	return true, nil
 }
 
-func (t *tmuxMux) CreateAndAttach(name string, _ string, windows []MuxWindowSpec) error {
+func (t *tmuxMux) CreateAndAttach(name string, _ string, opts MuxCreateOpts) error {
+	windows := opts.Windows
 	if len(windows) == 0 {
 		return fmt.Errorf("no windows to create")
 	}
@@ -58,6 +60,15 @@ func (t *tmuxMux) CreateAndAttach(name string, _ string, windows []MuxWindowSpec
 	}
 	if out, err := exec.Command(t.bin, args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("new-session: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	// Configure status bar visibility
+	statusVal := "off"
+	if opts.Bars {
+		statusVal = "on"
+	}
+	if out, err := exec.Command(t.bin, "set-option", "-t", name, "status", statusVal).CombinedOutput(); err != nil {
+		return fmt.Errorf("set-option status: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
 	// Additional panes in first window
@@ -81,6 +92,13 @@ func (t *tmuxMux) CreateAndAttach(name string, _ string, windows []MuxWindowSpec
 		}
 
 		if err := t.addPanes(name, win); err != nil {
+			return err
+		}
+	}
+
+	// Apply custom pane sizes
+	for _, win := range windows {
+		if err := t.resizePanes(name, win); err != nil {
 			return err
 		}
 	}
@@ -138,6 +156,37 @@ func (t *tmuxMux) addPanes(session string, win MuxWindowSpec) error {
 	return nil
 }
 
+// resizePanes applies configured size percentages to panes in a window.
+func (t *tmuxMux) resizePanes(session string, win MuxWindowSpec) error {
+	if len(win.Panes) <= 1 {
+		return nil
+	}
+	hasSizes := false
+	for _, pane := range win.Panes {
+		if pane.Size > 0 {
+			hasSizes = true
+			break
+		}
+	}
+	if !hasSizes {
+		return nil
+	}
+	flag := "-x"
+	if win.Layout == "even-vertical" {
+		flag = "-y"
+	}
+	for i, pane := range win.Panes {
+		if pane.Size <= 0 {
+			continue
+		}
+		target := fmt.Sprintf("%s:%s.%d", session, win.Name, i)
+		if out, err := exec.Command(t.bin, "resize-pane", "-t", target, flag, fmt.Sprintf("%d%%", pane.Size)).CombinedOutput(); err != nil {
+			return fmt.Errorf("resize-pane %q: %s: %w", target, strings.TrimSpace(string(out)), err)
+		}
+	}
+	return nil
+}
+
 func (t *tmuxMux) Attach(name string) error {
 	if t.IsInside() {
 		cmd := exec.Command(t.bin, "switch-client", "-t", name)
@@ -160,6 +209,89 @@ func (t *tmuxMux) Kill(name string) error {
 		return fmt.Errorf("kill-session: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+func (t *tmuxMux) ListWindows(session string) ([]MuxWindowSpec, error) {
+	// Get window names and layout strings: "index\tname\tlayout" per line
+	out, err := exec.Command(t.bin, "list-windows", "-t", session, "-F", "#{window_index}\t#{window_name}\t#{window_layout}").Output()
+	if err != nil {
+		return nil, fmt.Errorf("list-windows: %w", err)
+	}
+
+	var specs []MuxWindowSpec
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		winIndex := parts[0]
+		winName := parts[1]
+		rawLayout := ""
+		if len(parts) == 3 {
+			rawLayout = parts[2]
+		}
+
+		// Get pane working directories and dimensions for this window
+		paneOut, err := exec.Command(t.bin, "list-panes", "-t", session+":"+winIndex,
+			"-F", "#{pane_current_path}\t#{pane_width}\t#{pane_height}").Output()
+		if err != nil {
+			return nil, fmt.Errorf("list-panes for window %s: %w", winName, err)
+		}
+
+		var panes []MuxPaneSpec
+		var widths, heights []int
+		for _, paneLine := range strings.Split(strings.TrimSpace(string(paneOut)), "\n") {
+			if paneLine == "" {
+				continue
+			}
+			fields := strings.SplitN(paneLine, "\t", 3)
+			panes = append(panes, MuxPaneSpec{Dir: fields[0]})
+			if len(fields) == 3 {
+				pw, _ := strconv.Atoi(fields[1])
+				ph, _ := strconv.Atoi(fields[2])
+				widths = append(widths, pw)
+				heights = append(heights, ph)
+			}
+		}
+
+		layout := inferTmuxLayout(rawLayout, len(panes))
+		if len(panes) > 1 {
+			dims := widths
+			if layout == "even-vertical" {
+				dims = heights
+			}
+			computePaneSizePercents(panes, dims)
+		}
+
+		specs = append(specs, MuxWindowSpec{
+			Name:   winName,
+			Panes:  panes,
+			Layout: layout,
+		})
+	}
+
+	return specs, nil
+}
+
+// inferTmuxLayout determines the ws layout name from a tmux raw layout string.
+// The layout string uses { } for horizontal arrangement and [ ] for vertical.
+func inferTmuxLayout(rawLayout string, paneCount int) string {
+	if paneCount <= 1 {
+		return ""
+	}
+	// Find the first bracket after the "checksum,WxH,X,Y" prefix.
+	for _, ch := range rawLayout {
+		switch ch {
+		case '{':
+			return "even-horizontal"
+		case '[':
+			return "even-vertical"
+		}
+	}
+	return "tiled"
 }
 
 func (t *tmuxMux) List(highlight string) error {

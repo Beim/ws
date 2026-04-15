@@ -237,7 +237,7 @@ func completeContextCommand(m *manifest.Manifest, args []string, current int) Co
 
 func completeMuxCommand(_ *manifest.Manifest, args []string, current int) CompletionResult {
 	if current == 0 {
-		return finalizeCompletion([]string{"kill", "ls"}, completionWord(args, current), false)
+		return finalizeCompletion([]string{"kill", "ls", "save"}, completionWord(args, current), false)
 	}
 	return CompletionResult{}
 }

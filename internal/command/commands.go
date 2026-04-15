@@ -133,9 +133,10 @@ var builtinCommands = []BuiltinCommand{
 		Name:        CommandMux,
 		ShowInUsage: true,
 		Help: []HelpEntry{
-			{Usage: "mux", Description: "Attach or create a persistent terminal session (tmux/zellij)"},
-			{Usage: "mux kill", Description: "Kill the workspace session"},
+			{Usage: "mux [session]", Description: "Attach or create a terminal session (tmux/zellij)"},
+			{Usage: "mux kill [session]", Description: "Kill a session"},
 			{Usage: "mux ls", Description: "List multiplexer sessions"},
+			{Usage: "mux save [--local] [session]", Description: "Save session layout to manifest"},
 		},
 		complete: completeMuxCommand,
 	},

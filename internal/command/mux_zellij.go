@@ -1,10 +1,12 @@
 package command
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -46,13 +48,13 @@ func (z *zellijMux) HasSession(name string) (bool, error) {
 	return false, nil
 }
 
-func (z *zellijMux) CreateAndAttach(name string, wsHome string, windows []MuxWindowSpec) error {
+func (z *zellijMux) CreateAndAttach(name string, wsHome string, opts MuxCreateOpts) error {
 	if z.IsInside() {
 		return fmt.Errorf("already inside a zellij session; detach first or use a separate terminal")
 	}
 
 	layoutPath := filepath.Join(wsHome, ".ws-mux-layout.kdl")
-	kdl := generateKDLLayout(windows)
+	kdl := generateKDLLayout(opts.Windows, opts.Bars)
 	if err := os.WriteFile(layoutPath, []byte(kdl), 0644); err != nil {
 		return fmt.Errorf("writing layout file: %w", err)
 	}
@@ -78,11 +80,136 @@ func (z *zellijMux) Attach(name string) error {
 }
 
 func (z *zellijMux) Kill(name string) error {
-	out, err := exec.Command(z.bin, "kill-session", name).CombinedOutput()
+	// Use delete-session --force so it works for both running and exited sessions.
+	out, err := exec.Command(z.bin, "delete-session", "--force", name).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("kill-session: %s: %w", strings.TrimSpace(string(out)), err)
+		return fmt.Errorf("delete-session: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+func (z *zellijMux) ListWindows(session string) ([]MuxWindowSpec, error) {
+	// Use ZELLIJ_SESSION_NAME to target a specific session from outside.
+	cmd := exec.Command(z.bin, "action", "list-panes", "--json", "--tab", "--geometry")
+	cmd.Env = append(os.Environ(), "ZELLIJ_SESSION_NAME="+session)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("list-panes: %w", err)
+	}
+
+	var panes []zellijPane
+	if err := json.Unmarshal(out, &panes); err != nil {
+		return nil, fmt.Errorf("parsing list-panes output: %w", err)
+	}
+
+	// Group non-plugin panes by tab, preserving tab order.
+	type tabInfo struct {
+		name     string
+		position int
+		panes    []zellijPanePos
+	}
+	tabs := make(map[int]*tabInfo)
+	for _, p := range panes {
+		if p.IsPlugin {
+			continue
+		}
+		tab, ok := tabs[p.TabID]
+		if !ok {
+			tab = &tabInfo{name: p.TabName, position: p.TabPosition}
+			tabs[p.TabID] = tab
+		}
+		tab.panes = append(tab.panes, zellijPanePos{
+			spec: MuxPaneSpec{Dir: p.PaneCwd},
+			x:    p.PaneX,
+			y:    p.PaneY,
+			cols: p.PaneColumns,
+			rows: p.PaneRows,
+		})
+	}
+
+	sorted := make([]*tabInfo, 0, len(tabs))
+	for _, tab := range tabs {
+		sorted = append(sorted, tab)
+	}
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].position < sorted[j].position })
+
+	specs := make([]MuxWindowSpec, 0, len(sorted))
+	for _, tab := range sorted {
+		layout := inferLayoutFromPositions(tab.panes)
+		paneSpecs := make([]MuxPaneSpec, len(tab.panes))
+		var dims []int
+		for i, p := range tab.panes {
+			paneSpecs[i] = p.spec
+			if layout == "even-vertical" {
+				dims = append(dims, p.rows)
+			} else {
+				dims = append(dims, p.cols)
+			}
+		}
+		computePaneSizePercents(paneSpecs, dims)
+		specs = append(specs, MuxWindowSpec{
+			Name:   tab.name,
+			Panes:  paneSpecs,
+			Layout: layout,
+		})
+	}
+	return specs, nil
+}
+
+// zellijPane is the JSON structure returned by zellij action list-panes --json --tab --geometry.
+type zellijPane struct {
+	IsPlugin    bool   `json:"is_plugin"`
+	TabID       int    `json:"tab_id"`
+	TabPosition int    `json:"tab_position"`
+	TabName     string `json:"tab_name"`
+	PaneCwd     string `json:"pane_cwd"`
+	PaneX       int    `json:"pane_x"`
+	PaneY       int    `json:"pane_y"`
+	PaneColumns int    `json:"pane_columns"`
+	PaneRows    int    `json:"pane_rows"`
+}
+
+// zellijPanePos pairs a resolved pane spec with its on-screen coordinates and size.
+type zellijPanePos struct {
+	spec       MuxPaneSpec
+	x, y       int
+	cols, rows int
+}
+
+// layoutToZellijSplit converts a ws layout name to a zellij split_direction value.
+func layoutToZellijSplit(layout string) string {
+	switch layout {
+	case "even-vertical":
+		return "horizontal"
+	default:
+		// "even-horizontal" and "tiled" both use vertical (side-by-side)
+		return "vertical"
+	}
+}
+
+// inferLayoutFromPositions determines the pane layout from pane coordinates.
+// Same Y → side by side (even-horizontal), same X → stacked (even-vertical), mixed → tiled.
+func inferLayoutFromPositions(panes []zellijPanePos) string {
+	if len(panes) <= 1 {
+		return ""
+	}
+	allSameY := true
+	allSameX := true
+	for _, p := range panes[1:] {
+		if p.y != panes[0].y {
+			allSameY = false
+		}
+		if p.x != panes[0].x {
+			allSameX = false
+		}
+	}
+	if allSameY {
+		return "even-horizontal"
+	}
+	if allSameX {
+		return "even-vertical"
+	}
+	return "tiled"
 }
 
 func (z *zellijMux) List(highlight string) error {
@@ -104,32 +231,52 @@ func (z *zellijMux) List(highlight string) error {
 	return nil
 }
 
+// userShell returns the user's preferred shell from $SHELL, falling back to "bash".
+func userShell() string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return shell
+	}
+	return "bash"
+}
+
 // generateKDLLayout builds a zellij KDL layout string from window specs.
-func generateKDLLayout(windows []MuxWindowSpec) string {
+func generateKDLLayout(windows []MuxWindowSpec, bars bool) string {
 	var b strings.Builder
 	b.WriteString("layout {\n")
+	if bars {
+		// Use default_tab_template so every tab gets the bars automatically.
+		b.WriteString("    default_tab_template {\n")
+		b.WriteString("        pane size=1 borderless=true {\n")
+		b.WriteString("            plugin location=\"tab-bar\"\n")
+		b.WriteString("        }\n")
+		b.WriteString("        children\n")
+		b.WriteString("        pane size=2 borderless=true {\n")
+		b.WriteString("            plugin location=\"status-bar\"\n")
+		b.WriteString("        }\n")
+		b.WriteString("    }\n")
+	}
 	for _, win := range windows {
 		fmt.Fprintf(&b, "    tab name=%q", win.Name)
 		if len(win.Panes) > 1 {
-			b.WriteString(" split_direction=\"vertical\"")
+			fmt.Fprintf(&b, " split_direction=%q", layoutToZellijSplit(win.Layout))
 		}
 		b.WriteString(" {\n")
 		for _, pane := range win.Panes {
+			sizeAttr := ""
+			if pane.Size > 0 {
+				sizeAttr = fmt.Sprintf(" size=\"%d%%\"", pane.Size)
+			}
 			if pane.Cmd != "" {
-				cmdParts := strings.Fields(pane.Cmd)
-				fmt.Fprintf(&b, "        pane cwd=%q command=%q", pane.Dir, cmdParts[0])
-				if len(cmdParts) > 1 {
-					b.WriteString(" {\n")
-					b.WriteString("            args")
-					for _, arg := range cmdParts[1:] {
-						fmt.Fprintf(&b, " %q", arg)
-					}
-					b.WriteString("\n        }\n")
-				} else {
-					b.WriteString("\n")
-				}
+				// Wrap through the user's shell so the command gets full
+				// initialization (rc files, aliases, env vars).
+				// "exec $shell" drops back to an interactive shell when done.
+				shell := userShell()
+				shellCmd := pane.Cmd + "; exec " + shell
+				fmt.Fprintf(&b, "        pane%s cwd=%q command=%q {\n", sizeAttr, pane.Dir, shell)
+				fmt.Fprintf(&b, "            args \"-ic\" %q\n", shellCmd)
+				b.WriteString("        }\n")
 			} else {
-				fmt.Fprintf(&b, "        pane cwd=%q\n", pane.Dir)
+				fmt.Fprintf(&b, "        pane%s cwd=%q\n", sizeAttr, pane.Dir)
 			}
 		}
 		b.WriteString("    }\n")

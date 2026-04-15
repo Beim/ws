@@ -113,6 +113,57 @@ scopes:
 worktrees: false
 
 # ---------------------------------------------------------------------------
+# mux
+# ---------------------------------------------------------------------------
+# Terminal multiplexer (tmux/zellij) session configuration.
+# Used by `ws mux` to create a persistent session with the configured layout.
+#
+# backend: "tmux", "zellij", or omit to auto-detect (prefers zellij).
+# session: session name override (default: workspace directory base name).
+# bars:    show status/help bars. For zellij: tab-bar and status-bar plugins.
+#          For tmux: the status line. Default: false.
+# windows: list of window/tab definitions.
+#
+# Each window entry supports:
+#   name:   tab/window name (required)
+#   dir:    repo name or relative path (single pane directory)
+#   filter: ws filter string (group, repo list, etc.)
+#   split:  true to create one pane per matched repo (with filter)
+#   panes:  number of panes (for dir-based windows; default 1)
+#   cmd:    command to run in panes — string applies to all, list is positional
+#           e.g. cmd: make          (all panes)
+#           e.g. cmd: [make, ""]    (first pane only)
+#   layout: pane arrangement: "tiled" (default), "even-horizontal", "even-vertical"
+#   sizes:  pane sizes as percentages (must match pane count; omit for equal)
+#
+# For a single session, use windows: directly (legacy format):
+#
+#   mux:
+#     backend: tmux
+#     windows:
+#       - {name: code, dir: api-server}
+#
+# For multiple named sessions, use sessions: (ws mux <name> to pick one):
+#
+# Save the current session layout to the manifest with:
+#   ws mux save [session]              # writes to manifest.yml
+#   ws mux save [--local] [session]    # writes to manifest.local.yml
+
+mux:
+  backend: tmux
+  bars: true
+  sessions:
+    dev:
+      windows:
+        - {name: backend, filter: backend, split: true, layout: tiled}
+        - {name: frontend, filter: frontend, split: true}
+        - {name: shell, dir: api-server, panes: 2, sizes: [70, 30], layout: even-horizontal}
+    ops:
+      windows:
+        - {name: infra, filter: infra, split: true}
+        - {name: logs, dir: deploy-configs}
+
+# ---------------------------------------------------------------------------
 # groups
 # ---------------------------------------------------------------------------
 # Named sets of repos. Used for filtering across all commands:

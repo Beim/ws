@@ -387,6 +387,193 @@ worktrees: false
 	assert.False(t, m.Worktrees)
 }
 
+func TestParse_MuxBarsTrue(t *testing.T) {
+	yaml := `
+root: ..
+mux:
+  backend: tmux
+  bars: true
+  windows:
+    - {name: editor, dir: my-repo}
+remotes:
+  default: git@example.com
+repos:
+  my-repo:
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	assert.True(t, m.Mux.Bars)
+	assert.Equal(t, "tmux", m.Mux.Backend)
+	assert.Len(t, m.Mux.Windows, 1)
+}
+
+func TestParse_MuxWindowSizes(t *testing.T) {
+	yaml := `
+root: ..
+mux:
+  windows:
+    - {name: dev, dir: api, panes: 2, sizes: [70, 30], layout: even-horizontal}
+remotes:
+  default: git@example.com
+repos:
+  api:
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	require.Len(t, m.Mux.Windows, 1)
+	assert.Equal(t, []int{70, 30}, m.Mux.Windows[0].Sizes)
+}
+
+func TestParse_MuxCmdScalar(t *testing.T) {
+	yaml := `
+root: ..
+mux:
+  windows:
+    - {name: dev, dir: api, cmd: cc}
+remotes:
+  default: git@example.com
+repos:
+  api:
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cc"}, m.Mux.Windows[0].Cmd)
+}
+
+func TestParse_MuxCmdList(t *testing.T) {
+	yaml := `
+root: ..
+mux:
+  windows:
+    - name: dev
+      dir: api
+      panes: 2
+      cmd: [cc, ""]
+remotes:
+  default: git@example.com
+repos:
+  api:
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cc", ""}, m.Mux.Windows[0].Cmd)
+}
+
+func TestParse_MuxNamedSessions(t *testing.T) {
+	yaml := `
+root: ..
+mux:
+  backend: zellij
+  bars: true
+  sessions:
+    dev:
+      windows:
+        - {name: code, dir: api}
+    ops:
+      session: xtracta-ops
+      windows:
+        - {name: logs, dir: infra}
+remotes:
+  default: git@example.com
+repos:
+  api:
+  infra:
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	assert.Len(t, m.Mux.Sessions, 2)
+	assert.Len(t, m.Mux.Sessions["dev"].Windows, 1)
+	assert.Equal(t, "xtracta-ops", m.Mux.Sessions["ops"].Session)
+}
+
+func TestMuxConfig_ResolveSession_Named(t *testing.T) {
+	cfg := MuxConfig{
+		Sessions: map[string]MuxSession{
+			"dev": {Windows: []MuxWindow{{Name: "code"}}},
+			"ops": {Session: "custom-name", Windows: []MuxWindow{{Name: "logs"}}},
+		},
+	}
+	s, name, err := cfg.ResolveSession("dev", "/ws")
+	require.NoError(t, err)
+	assert.Equal(t, "dev", name)
+	assert.Len(t, s.Windows, 1)
+
+	s, name, err = cfg.ResolveSession("ops", "/ws")
+	require.NoError(t, err)
+	assert.Equal(t, "custom-name", name)
+}
+
+func TestMuxConfig_ResolveSession_SingleDefault(t *testing.T) {
+	cfg := MuxConfig{
+		Sessions: map[string]MuxSession{
+			"dev": {Windows: []MuxWindow{{Name: "code"}}},
+		},
+	}
+	s, name, err := cfg.ResolveSession("", "/ws")
+	require.NoError(t, err)
+	assert.Equal(t, "dev", name)
+	assert.Len(t, s.Windows, 1)
+}
+
+func TestMuxConfig_ResolveSession_MultipleRequiresName(t *testing.T) {
+	cfg := MuxConfig{
+		Sessions: map[string]MuxSession{
+			"dev": {},
+			"ops": {},
+		},
+	}
+	_, _, err := cfg.ResolveSession("", "/ws")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "specify one by name")
+}
+
+func TestMuxConfig_ResolveSession_Legacy(t *testing.T) {
+	cfg := MuxConfig{
+		Session: "my-session",
+		Windows: []MuxWindow{{Name: "code"}},
+	}
+	s, name, err := cfg.ResolveSession("", "/ws")
+	require.NoError(t, err)
+	assert.Equal(t, "my-session", name)
+	assert.Len(t, s.Windows, 1)
+}
+
+func TestMuxConfig_ResolveSession_LegacyFallbackToDir(t *testing.T) {
+	cfg := MuxConfig{
+		Windows: []MuxWindow{{Name: "code"}},
+	}
+	_, name, err := cfg.ResolveSession("", "/home/user/my-workspace")
+	require.NoError(t, err)
+	assert.Equal(t, "my-workspace", name)
+}
+
+func TestMuxConfig_ResolveSession_UnknownName(t *testing.T) {
+	cfg := MuxConfig{
+		Sessions: map[string]MuxSession{
+			"dev": {},
+		},
+	}
+	_, _, err := cfg.ResolveSession("nope", "/ws")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown mux session")
+	assert.Contains(t, err.Error(), "dev")
+}
+
+func TestParse_MuxBarsDefaultFalse(t *testing.T) {
+	yaml := `
+root: ..
+mux:
+  backend: tmux
+remotes:
+  default: git@example.com
+repos:
+  my-repo:
+`
+	m, err := Parse([]byte(yaml))
+	require.NoError(t, err)
+	assert.False(t, m.Mux.Bars)
+}
+
 func TestParse_RequiresRoot(t *testing.T) {
 	_, err := Parse([]byte(`
 remotes:

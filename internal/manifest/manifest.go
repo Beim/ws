@@ -59,34 +59,143 @@ type RepoInfo struct {
 
 // MuxConfig holds terminal multiplexer configuration.
 type MuxConfig struct {
-	Backend string      // "tmux", "zellij", or "" (auto-detect)
-	Session string      // session name override (default: workspace directory name)
+	Backend  string                // "tmux", "zellij", or "" (auto-detect)
+	Session  string                // session name override (legacy single-session mode)
+	Bars     bool                  // show status/help bars (zellij tab-bar + status-bar; tmux status)
+	Windows  []MuxWindow           // window/tab layout (legacy single-session mode)
+	Sessions map[string]MuxSession // named session configurations
+	barsSet  bool
+}
+
+// MuxSession is one named session configuration within the mux block.
+type MuxSession struct {
+	Session string      // multiplexer session name override (default: config key)
 	Windows []MuxWindow // window/tab layout
+}
+
+// ResolveSession returns the session config and multiplexer session name for a
+// given config name. An empty name selects the first (or only) session.
+// When using the legacy format (windows at the top level), the config name is empty.
+func (c *MuxConfig) ResolveSession(name, wsHome string) (MuxSession, string, error) {
+	if len(c.Sessions) > 0 {
+		if name == "" {
+			// A single-session map has only one key, so iteration is deterministic.
+			if len(c.Sessions) == 1 {
+				for k, s := range c.Sessions {
+					sessionName := k
+					if s.Session != "" {
+						sessionName = s.Session
+					}
+					return s, sanitizeMuxName(sessionName), nil
+				}
+			}
+			return MuxSession{}, "", fmt.Errorf("multiple mux sessions configured; specify one by name")
+		}
+		s, ok := c.Sessions[name]
+		if !ok {
+			var names []string
+			for k := range c.Sessions {
+				names = append(names, k)
+			}
+			return MuxSession{}, "", fmt.Errorf("unknown mux session %q (available: %s)", name, strings.Join(names, ", "))
+		}
+		sessionName := name
+		if s.Session != "" {
+			sessionName = s.Session
+		}
+		return s, sanitizeMuxName(sessionName), nil
+	}
+
+	// Legacy format: windows at top level, single session
+	if name != "" {
+		return MuxSession{}, "", fmt.Errorf("unknown mux session %q (no named sessions configured)", name)
+	}
+	sessionName := c.Session
+	if sessionName == "" {
+		sessionName = filepath.Base(wsHome)
+	}
+	return MuxSession{
+		Windows: c.Windows,
+	}, sanitizeMuxName(sessionName), nil
+}
+
+func sanitizeMuxName(name string) string {
+	name = strings.ReplaceAll(name, ".", "-")
+	name = strings.ReplaceAll(name, ":", "-")
+	return name
+}
+
+// SessionNames returns the configured session config names, or nil for legacy format.
+func (c *MuxConfig) SessionNames() []string {
+	if len(c.Sessions) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(c.Sessions))
+	for k := range c.Sessions {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // MuxWindow describes one window/tab in a multiplexer session.
 type MuxWindow struct {
-	Name   string // tab/window name (required)
-	Dir    string // repo name or relative path
-	Filter string // ws filter string to resolve repos
-	Split  bool   // when filter matches multiple repos, create one pane per repo
-	Cmd    string // command to run in the pane(s)
-	Layout string // pane layout: "tiled", "even-horizontal", "even-vertical"
+	Name   string   // tab/window name (required)
+	Dir    string   // repo name or relative path
+	Filter string   // ws filter string to resolve repos
+	Split  bool     // when filter matches multiple repos, create one pane per repo
+	Panes  int      // number of panes (for dir-based windows; default 1)
+	Cmd    []string // per-pane commands; single value = all panes, list = positional
+	Layout string   // pane layout: "tiled", "even-horizontal", "even-vertical"
+	Sizes  []int    // pane sizes as percentages (omit for equal distribution)
 }
 
 type rawMuxConfig struct {
-	Backend string         `yaml:"backend"`
+	Backend  string                    `yaml:"backend"`
+	Session  string                    `yaml:"session"`
+	Bars     *bool                     `yaml:"bars"`
+	Windows  []rawMuxWindow            `yaml:"windows"`
+	Sessions map[string]rawMuxSession  `yaml:"sessions"`
+}
+
+type rawMuxSession struct {
 	Session string         `yaml:"session"`
 	Windows []rawMuxWindow `yaml:"windows"`
 }
 
 type rawMuxWindow struct {
-	Name   string `yaml:"name"`
-	Dir    string `yaml:"dir"`
-	Filter string `yaml:"filter"`
-	Split  bool   `yaml:"split"`
-	Cmd    string `yaml:"cmd"`
-	Layout string `yaml:"layout"`
+	Name   string         `yaml:"name"`
+	Dir    string         `yaml:"dir"`
+	Filter string         `yaml:"filter"`
+	Split  bool           `yaml:"split"`
+	Panes  int            `yaml:"panes"`
+	Cmd    stringOrList   `yaml:"cmd"`
+	Layout string         `yaml:"layout"`
+	Sizes  []int          `yaml:"sizes"`
+}
+
+// stringOrList is a YAML type that accepts either a scalar string or a list of strings.
+type stringOrList []string
+
+func (s *stringOrList) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		var single string
+		if err := node.Decode(&single); err != nil {
+			return err
+		}
+		*s = stringOrList{single}
+		return nil
+	case yaml.SequenceNode:
+		var list []string
+		if err := node.Decode(&list); err != nil {
+			return err
+		}
+		*s = stringOrList(list)
+		return nil
+	default:
+		return fmt.Errorf("cmd must be a string or list of strings")
+	}
 }
 
 // rawManifest is the YAML deserialization target.
@@ -312,17 +421,38 @@ func parseMuxConfig(raw rawMuxConfig) MuxConfig {
 		Backend: raw.Backend,
 		Session: raw.Session,
 	}
-	for _, w := range raw.Windows {
-		cfg.Windows = append(cfg.Windows, MuxWindow{
+	if raw.Bars != nil {
+		cfg.Bars = *raw.Bars
+		cfg.barsSet = true
+	}
+	cfg.Windows = parseMuxWindows(raw.Windows)
+	if len(raw.Sessions) > 0 {
+		cfg.Sessions = make(map[string]MuxSession, len(raw.Sessions))
+		for name, rs := range raw.Sessions {
+			cfg.Sessions[name] = MuxSession{
+				Session: rs.Session,
+				Windows: parseMuxWindows(rs.Windows),
+			}
+		}
+	}
+	return cfg
+}
+
+func parseMuxWindows(raw []rawMuxWindow) []MuxWindow {
+	var windows []MuxWindow
+	for _, w := range raw {
+		windows = append(windows, MuxWindow{
 			Name:   w.Name,
 			Dir:    w.Dir,
 			Filter: w.Filter,
 			Split:  w.Split,
-			Cmd:    w.Cmd,
+			Panes:  w.Panes,
+			Cmd:    []string(w.Cmd),
 			Layout: w.Layout,
+			Sizes:  w.Sizes,
 		})
 	}
-	return cfg
+	return windows
 }
 
 func defaultScopeDirs() []ScopeDirConfig {
