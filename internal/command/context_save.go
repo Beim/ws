@@ -23,7 +23,7 @@ func SaveContextGroup(m *manifest.Manifest, wsHome, group string, local bool) er
 		return err
 	}
 
-	members, err := currentContextGroupMembers(m, wsHome)
+	members, err := currentContextGroupMembers(m, wsHome, local)
 	if err != nil {
 		return err
 	}
@@ -65,13 +65,24 @@ func validateContextGroupName(m *manifest.Manifest, group string) error {
 	return nil
 }
 
-func currentContextGroupMembers(m *manifest.Manifest, wsHome string) ([]string, error) {
+func currentContextGroupMembers(m *manifest.Manifest, wsHome string, preserveWorktrees bool) ([]string, error) {
 	state, ok, err := loadStoredContextState(wsHome)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, fmt.Errorf("no context set")
+	}
+
+	if preserveWorktrees {
+		members, invalid := preserveContextMembers(state.Resolved, m.ActiveRepos())
+		if len(invalid) > 0 {
+			return nil, fmt.Errorf("current context includes repos not in the manifest: %s", strings.Join(invalid, ", "))
+		}
+		if len(members) == 0 {
+			return nil, fmt.Errorf("current context matched no repos")
+		}
+		return members, nil
 	}
 
 	members, invalid := collapseContextMembers(state.Resolved, m.ActiveRepos())
@@ -83,6 +94,44 @@ func currentContextGroupMembers(m *manifest.Manifest, wsHome string) ([]string, 
 	}
 
 	return members, nil
+}
+
+// preserveContextMembers validates resolved context entries, keeping worktree
+// tokens intact (e.g., "repo@feature") instead of collapsing them to base repos.
+func preserveContextMembers(resolved []string, active map[string]manifest.RepoConfig) ([]string, []string) {
+	if len(resolved) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]bool, len(resolved))
+	var members []string
+	var invalid []string
+
+	for _, entry := range resolved {
+		member := strings.TrimSpace(entry)
+		if member == "" {
+			continue
+		}
+		if seen[member] {
+			continue
+		}
+
+		// Validate: either a known repo or a worktree of a known repo
+		if _, ok := active[member]; ok {
+			seen[member] = true
+			members = append(members, member)
+			continue
+		}
+		if repoName, _, ok := splitWorktreeToken(member, active); ok && repoName != "" {
+			seen[member] = true
+			members = append(members, member)
+			continue
+		}
+
+		invalid = append(invalid, entry)
+	}
+
+	return members, invalid
 }
 
 func collapseContextMembers(resolved []string, active map[string]manifest.RepoConfig) ([]string, []string) {

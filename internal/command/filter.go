@@ -110,10 +110,25 @@ func resolveFilterRepos(m *manifest.Manifest, wsHome, filter string, strict bool
 		if members, ok := m.Groups[token]; ok {
 			for _, name := range members {
 				cfg, ok := active[name]
-				if !ok {
+				if ok {
+					add(baseRepoInfo(m, wsHome, name, cfg, repoGroups[name]))
 					continue
 				}
-				add(baseRepoInfo(m, wsHome, name, cfg, repoGroups[name]))
+				// Try as a worktree token (e.g., "repo@feature")
+				repoName, selector, isWT := splitWorktreeToken(name, active)
+				if !isWT || selector == "" {
+					continue
+				}
+				wtCfg := active[repoName]
+				target, err := resolveExplicitWorktreeTarget(baseRepoInfo(m, wsHome, repoName, wtCfg, repoGroups[repoName]), selector)
+				if err != nil {
+					if strict {
+						return nil, fmt.Errorf("group %q member %q: %w", token, name, err)
+					}
+					fmt.Fprintf(os.Stderr, "Warning: group %q member %q: %v\n", token, name, err)
+					continue
+				}
+				add(target)
 			}
 			continue
 		}

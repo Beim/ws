@@ -135,6 +135,30 @@ repos:
 	assert.Equal(t, []string{"repo"}, saved.Groups["focus"])
 }
 
+func TestSaveContextGroup_LocalPreservesWorktreeRefs(t *testing.T) {
+	wsHome := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
+root: repos
+remotes:
+  default: git@example.com
+repos:
+  repo:
+`), 0644))
+
+	m, err := manifest.Load(filepath.Join(wsHome, "manifest.yml"))
+	require.NoError(t, err)
+	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "repo@feature,repo", []manifest.RepoInfo{
+		{Name: "repo@feature", Worktree: "feature"},
+		{Name: "repo"},
+	}, nil))
+
+	require.NoError(t, SaveContextGroup(m, wsHome, "focus", true))
+
+	merged, err := manifest.LoadWithLocal(wsHome)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"repo@feature", "repo"}, merged.Groups["focus"])
+}
+
 func TestSaveContextGroup_RejectsLocalOnlyReposInSharedManifest(t *testing.T) {
 	wsHome := t.TempDir()
 	m := loadManifestWithLocal(t, wsHome, `
@@ -190,6 +214,108 @@ repos:
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "reserved filter name")
 	}
+}
+
+func TestGroupWithWorktreeMembers_ResolvesCorrectly(t *testing.T) {
+	wsHome := t.TempDir()
+	repoRoot := filepath.Join(wsHome, "repos")
+
+	// Create a git repo with a worktree
+	initCheckout(t, filepath.Join(repoRoot, "repo"))
+	runGit(t, filepath.Join(repoRoot, "repo"), "worktree", "add", "-b", "feature", filepath.Join(repoRoot, "repo-feature"))
+
+	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
+root: repos
+remotes:
+  default: git@example.com
+groups:
+  feature-work: [repo@repo-feature]
+repos:
+  repo:
+`), 0644))
+
+	m, err := manifest.LoadWithLocal(wsHome)
+	require.NoError(t, err)
+
+	// Resolve the group — should find the worktree
+	repos, err := resolveCommandRepos(m, wsHome, "feature-work", false)
+	require.NoError(t, err)
+	require.Len(t, repos, 1)
+	assert.Equal(t, "repo@repo-feature", repos[0].Name)
+	assert.Equal(t, filepath.Join(repoRoot, "repo-feature"), repos[0].Path)
+}
+
+func TestGroupWithWorktreeMembers_SkipsMissingWorktree(t *testing.T) {
+	wsHome := t.TempDir()
+	repoRoot := filepath.Join(wsHome, "repos")
+
+	initCheckout(t, filepath.Join(repoRoot, "repo"))
+	// No worktree created — group member should be skipped with warning
+
+	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
+root: repos
+remotes:
+  default: git@example.com
+groups:
+  stale: [repo@nonexistent]
+repos:
+  repo:
+`), 0644))
+
+	m, err := manifest.LoadWithLocal(wsHome)
+	require.NoError(t, err)
+
+	repos, err := resolveCommandRepos(m, wsHome, "stale", false)
+	require.NoError(t, err)
+	assert.Empty(t, repos)
+}
+
+func TestGroupWithMixedMembers_ResolvesAll(t *testing.T) {
+	wsHome := t.TempDir()
+	repoRoot := filepath.Join(wsHome, "repos")
+
+	initCheckout(t, filepath.Join(repoRoot, "api"))
+	initCheckout(t, filepath.Join(repoRoot, "web"))
+	runGit(t, filepath.Join(repoRoot, "api"), "worktree", "add", "-b", "feature", filepath.Join(repoRoot, "api-feature"))
+
+	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
+root: repos
+remotes:
+  default: git@example.com
+groups:
+  feature: [api@api-feature, web]
+repos:
+  api:
+  web:
+`), 0644))
+
+	m, err := manifest.LoadWithLocal(wsHome)
+	require.NoError(t, err)
+
+	repos, err := resolveCommandRepos(m, wsHome, "feature", false)
+	require.NoError(t, err)
+	require.Len(t, repos, 2)
+	assert.Equal(t, "api@api-feature", repos[0].Name)
+	assert.Equal(t, "web", repos[1].Name)
+}
+
+func TestPreserveContextMembers_KeepsWorktreeRefs(t *testing.T) {
+	active := map[string]manifest.RepoConfig{"repo": {}}
+	members, invalid := preserveContextMembers(
+		[]string{"repo@feature", "repo"},
+		active,
+	)
+	assert.Equal(t, []string{"repo@feature", "repo"}, members)
+	assert.Empty(t, invalid)
+}
+
+func TestPreserveContextMembers_RejectsUnknownRepos(t *testing.T) {
+	active := map[string]manifest.RepoConfig{"repo": {}}
+	_, invalid := preserveContextMembers(
+		[]string{"unknown@feature"},
+		active,
+	)
+	assert.Equal(t, []string{"unknown@feature"}, invalid)
 }
 
 func TestCompleteContextSuggestsSave(t *testing.T) {
