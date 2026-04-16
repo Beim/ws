@@ -112,6 +112,27 @@ func completeListCommand(_ *manifest.Manifest, args []string, current int) Compl
 	return finalizeCompletion(append([]string{"--all", "-a"}, worktreesFlagSuggestions()...), completionWord(args, current), false)
 }
 
+func completeAgentCommand(m *manifest.Manifest, args []string, current int) CompletionResult {
+	if current < 0 {
+		return CompletionResult{}
+	}
+	currentWord := completionWord(args, current)
+	if current == 0 {
+		values := []string{"ls", "resume", "--agent", "-a"}
+		values = append(values, repoSuggestions(m)...)
+		return finalizeCompletion(values, currentWord, false)
+	}
+	if len(args) > 0 && args[0] == "ls" {
+		return completeFilterCommand(m, args[1:], current-1, []string{"-n", "--all", "-v", "--verbose"})
+	}
+	return finalizeCompletion(repoSuggestions(m), currentWord, false)
+}
+
+func completeDirsCommand(m *manifest.Manifest, args []string, current int) CompletionResult {
+	flags := append([]string{"--root"}, worktreesFlagSuggestions()...)
+	return completeFilterCommand(m, args, current, flags)
+}
+
 func completeSetupCommand(m *manifest.Manifest, args []string, current int) CompletionResult {
 	if current == 0 {
 		return finalizeCompletion(filterSuggestions(m), completionWord(args, current), false)

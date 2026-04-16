@@ -23,6 +23,7 @@ type Manifest struct {
 	Groups        map[string][]string // group name → ordered repo names
 	Repos         map[string]RepoConfig
 	Exclude       []string
+	Agents        map[string]string // agent profile name → shell command
 	worktreesSet  bool
 	scopesSet     bool
 	muxSet        bool
@@ -212,6 +213,7 @@ type rawManifest struct {
 	Groups    map[string][]string          `yaml:"groups"`
 	Repos     map[string]map[string]string `yaml:"repos"`
 	Exclude   []string                     `yaml:"exclude"`
+	Agents    map[string]string            `yaml:"agents"` // agent profile name → shell command
 }
 
 type rawScopeDir struct {
@@ -259,6 +261,7 @@ func parse(data []byte, requireRoot bool) (*Manifest, error) {
 		Groups:        raw.Groups,
 		Repos:         make(map[string]RepoConfig),
 		Exclude:       raw.Exclude,
+		Agents:        raw.Agents,
 	}
 
 	if requireRoot && strings.TrimSpace(m.Root) == "" {
@@ -419,6 +422,14 @@ func (m *Manifest) MergeLocal(path string) error {
 	// Groups: local replaces same-name groups, new groups are added
 	for name, members := range local.Groups {
 		m.Groups[name] = members
+	}
+
+	// Agents: union, local wins on conflict
+	for name, cmd := range local.Agents {
+		if m.Agents == nil {
+			m.Agents = make(map[string]string)
+		}
+		m.Agents[name] = cmd
 	}
 
 	return nil

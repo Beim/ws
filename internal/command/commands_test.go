@@ -16,11 +16,13 @@ func TestBuiltinCommandNames(t *testing.T) {
 		CommandShell,
 		CommandOpen,
 		CommandList,
+		CommandDirs,
 		CommandFetch,
 		CommandPull,
 		CommandContext,
 		CommandMux,
 		CommandWorktree,
+		CommandAgent,
 	}, BuiltinCommandNames())
 }
 

@@ -24,6 +24,7 @@ repos:
 	assert.Contains(t, result.Values, "open")
 	assert.Contains(t, result.Values, "shell")
 	assert.Contains(t, result.Values, "ctx")
+	assert.Contains(t, result.Values, "dirs")
 	assert.Contains(t, result.Values, "backend")
 	assert.Contains(t, result.Values, "repo-a")
 	assert.Contains(t, result.Values, "active")
@@ -128,6 +129,27 @@ repos:
 	assert.Contains(t, result.Values, "-t")
 	assert.Contains(t, result.Values, "--no-worktrees")
 	assert.Contains(t, result.Values, "--worktrees")
+}
+
+func TestCompleteDirsIncludesFilters(t *testing.T) {
+	m, err := parseManifestYAML(`
+remotes:
+  default: git@example.com
+groups:
+  backend: [repo-a]
+repos:
+  repo-a:
+  repo-b:
+`)
+	require.NoError(t, err)
+
+	result := Complete(m, []string{"dirs", ""}, 1)
+	assert.Contains(t, result.Values, "-t")
+	assert.Contains(t, result.Values, "--worktrees")
+	assert.Contains(t, result.Values, "--no-worktrees")
+	assert.Contains(t, result.Values, "backend")
+	assert.Contains(t, result.Values, "repo-a")
+	assert.Contains(t, result.Values, "all")
 }
 
 func TestCompletePassthroughAfterWorktreesFallsBackToCommands(t *testing.T) {

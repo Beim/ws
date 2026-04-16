@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/dtuit/ws/internal/command"
@@ -217,6 +218,103 @@ func parseEditorFlag(args []string) (string, []string) {
 		}
 	}
 	return editor, rest
+}
+
+type agentArgs struct {
+	Action      string   // "start", "ls", "resume"
+	Repo        string   // target repo (for start)
+	Agent       string   // agent profile name (--agent)
+	IndexOrID   string   // for resume: numeric index or session ID prefix
+	Filter      string   // for ls: filter expression
+	Limit       int      // for ls: max sessions (0 = default)
+	ShowAll     bool     // for ls: show all sessions
+	Verbose     bool     // for ls: show full prompt text
+	Passthrough []string // args after -- to pass to the agent CLI
+}
+
+func parseAgentArgs(args []string) (agentArgs, error) {
+	// Split on "--" to separate ws args from agent passthrough
+	var wsArgs, passthrough []string
+	for i, arg := range args {
+		if arg == "--" {
+			wsArgs = args[:i]
+			passthrough = args[i+1:]
+			break
+		}
+	}
+	if passthrough == nil {
+		wsArgs = args
+	}
+
+	if len(wsArgs) == 0 {
+		return agentArgs{Action: "start", Passthrough: passthrough}, nil
+	}
+
+	switch wsArgs[0] {
+	case "ls", "list":
+		return parseAgentLSArgs(wsArgs[1:])
+	case "resume":
+		if len(wsArgs) != 2 {
+			return agentArgs{}, fmt.Errorf("usage: ws agent resume <#|session-id>")
+		}
+		return agentArgs{Action: "resume", IndexOrID: wsArgs[1]}, nil
+	default:
+		return parseAgentStartArgs(wsArgs, passthrough)
+	}
+}
+
+func parseAgentStartArgs(args, passthrough []string) (agentArgs, error) {
+	parsed := agentArgs{Action: "start", Passthrough: passthrough}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--agent", "-a":
+			if i+1 >= len(args) {
+				return agentArgs{}, fmt.Errorf("--agent requires a name")
+			}
+			parsed.Agent = args[i+1]
+			i++
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return agentArgs{}, fmt.Errorf("unknown flag: %s", args[i])
+			}
+			if parsed.Repo != "" {
+				return agentArgs{}, fmt.Errorf("usage: ws agent [--agent name] [repo] [-- args...]")
+			}
+			parsed.Repo = args[i]
+		}
+	}
+	return parsed, nil
+}
+
+func parseAgentLSArgs(args []string) (agentArgs, error) {
+	parsed := agentArgs{Action: "ls"}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--all":
+			parsed.ShowAll = true
+		case "-v", "--verbose":
+			parsed.Verbose = true
+		case "-n":
+			if i+1 >= len(args) {
+				return agentArgs{}, fmt.Errorf("-n requires a number")
+			}
+			n, err := strconv.Atoi(args[i+1])
+			if err != nil || n < 1 {
+				return agentArgs{}, fmt.Errorf("-n requires a positive number")
+			}
+			parsed.Limit = n
+			i++
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return agentArgs{}, fmt.Errorf("unknown flag: %s", args[i])
+			}
+			if parsed.Filter != "" {
+				return agentArgs{}, fmt.Errorf("usage: ws agent ls [-v] [-n N | --all] [filter]")
+			}
+			parsed.Filter = args[i]
+		}
+	}
+	return parsed, nil
 }
 
 type muxArgs struct {

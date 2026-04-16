@@ -324,6 +324,85 @@ func TestParseMuxArgs_DupTooManyArgs(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseAgentArgs_DefaultStart(t *testing.T) {
+	parsed, err := parseAgentArgs(nil)
+	require.NoError(t, err)
+	assert.Equal(t, "start", parsed.Action)
+	assert.Empty(t, parsed.Repo)
+	assert.Empty(t, parsed.Agent)
+}
+
+func TestParseAgentArgs_StartWithRepo(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"api-server"})
+	require.NoError(t, err)
+	assert.Equal(t, "start", parsed.Action)
+	assert.Equal(t, "api-server", parsed.Repo)
+}
+
+func TestParseAgentArgs_StartWithAgentFlag(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"--agent", "codex", "api-server"})
+	require.NoError(t, err)
+	assert.Equal(t, "start", parsed.Action)
+	assert.Equal(t, "codex", parsed.Agent)
+	assert.Equal(t, "api-server", parsed.Repo)
+}
+
+func TestParseAgentArgs_StartWithPassthrough(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"api-server", "--", "--resume", "abc123"})
+	require.NoError(t, err)
+	assert.Equal(t, "start", parsed.Action)
+	assert.Equal(t, "api-server", parsed.Repo)
+	assert.Equal(t, []string{"--resume", "abc123"}, parsed.Passthrough)
+}
+
+func TestParseAgentArgs_LS(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"ls"})
+	require.NoError(t, err)
+	assert.Equal(t, "ls", parsed.Action)
+	assert.Empty(t, parsed.Filter)
+}
+
+func TestParseAgentArgs_LSWithFilter(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"ls", "backend"})
+	require.NoError(t, err)
+	assert.Equal(t, "ls", parsed.Action)
+	assert.Equal(t, "backend", parsed.Filter)
+}
+
+func TestParseAgentArgs_LSWithLimit(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"ls", "-n", "5"})
+	require.NoError(t, err)
+	assert.Equal(t, "ls", parsed.Action)
+	assert.Equal(t, 5, parsed.Limit)
+}
+
+func TestParseAgentArgs_LSAll(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"ls", "--all"})
+	require.NoError(t, err)
+	assert.Equal(t, "ls", parsed.Action)
+	assert.True(t, parsed.ShowAll)
+}
+
+func TestParseAgentArgs_Resume(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"resume", "3"})
+	require.NoError(t, err)
+	assert.Equal(t, "resume", parsed.Action)
+	assert.Equal(t, "3", parsed.IndexOrID)
+}
+
+func TestParseAgentArgs_ResumeRequiresArg(t *testing.T) {
+	_, err := parseAgentArgs([]string{"resume"})
+	require.Error(t, err)
+}
+
+func TestParseAgentArgs_PassthroughOnly(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"--", "-r"})
+	require.NoError(t, err)
+	assert.Equal(t, "start", parsed.Action)
+	assert.Empty(t, parsed.Repo)
+	assert.Equal(t, []string{"-r"}, parsed.Passthrough)
+}
+
 func activeRepoConfigs(t *testing.T, yaml string) map[string]manifest.RepoConfig {
 	t.Helper()
 

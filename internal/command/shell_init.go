@@ -12,6 +12,17 @@ func ShellInitScript() string {
       local dir
       dir="$(command ws cd "${@:2}")" && cd "$dir"
       ;;
+    agent)
+      if [ "$2" = "ls" ] || [ "$2" = "list" ]; then
+        command ws "$@"
+      else
+        local _ws_agent_info _ws_agent_dir _ws_agent_cmd
+        _ws_agent_info="$(command ws agent "${@:2}")"
+        _ws_agent_dir="$(printf '%%s\n' "$_ws_agent_info" | head -1)"
+        _ws_agent_cmd="$(printf '%%s\n' "$_ws_agent_info" | tail -n +2)"
+        cd "$_ws_agent_dir" && eval "$_ws_agent_cmd"
+      fi
+      ;;
     *)
       command ws "$@"
       ;;

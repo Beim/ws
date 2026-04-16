@@ -194,6 +194,19 @@ dispatch:
 			fatal(err)
 		}
 
+	case command.CommandDirs:
+		var root bool
+		args, root = stripBoolFlag(args, "--root")
+		args, localWorktrees := command.StripWorktreesFlags(args)
+		includeWorktrees := resolveWorktreesOverride(defaultWorktrees, globalWorktrees, localWorktrees)
+		filter, err := parseOptionalFilterArg(args, "", false, "ws dirs [--root] [filter] ["+command.WorktreesFlagUsage+"]")
+		if err != nil {
+			fatal(err)
+		}
+		if err := command.Dirs(m, wsHome, filter, includeWorktrees, root); err != nil {
+			fatal(err)
+		}
+
 	case command.CommandLL:
 		args, showBranches := command.StripLLBranchesFlags(args)
 		args, localWorktrees := command.StripWorktreesFlags(args)
@@ -253,6 +266,31 @@ dispatch:
 			}
 		case "dup":
 			if err := command.MuxDup(m, wsHome, parsed.WindowName); err != nil {
+				fatal(err)
+			}
+		}
+
+	case command.CommandAgent:
+		parsed, err := parseAgentArgs(args)
+		if err != nil {
+			fatal(err)
+		}
+		switch parsed.Action {
+		case "start":
+			if err := command.AgentStart(m, wsHome, parsed.Repo, parsed.Agent, parsed.Passthrough); err != nil {
+				fatal(err)
+			}
+		case "ls":
+			limit := parsed.Limit
+			if limit == 0 && !parsed.ShowAll {
+				limit = command.AgentDefaultLimit
+			}
+			mode := command.AgentListMode{Verbose: parsed.Verbose}
+			if err := command.AgentList(m, wsHome, parsed.Filter, false, limit, mode); err != nil {
+				fatal(err)
+			}
+		case "resume":
+			if err := command.AgentResume(m, wsHome, parsed.IndexOrID); err != nil {
 				fatal(err)
 			}
 		}

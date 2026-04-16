@@ -11,7 +11,9 @@ const (
 	CommandList    = "list"
 	CommandFetch   = "fetch"
 	CommandPull    = "pull"
-	CommandContext = "context"
+	CommandAgent   = "agent"
+	CommandContext  = "context"
+	CommandDirs    = "dirs"
 	CommandMux      = "mux"
 	CommandWorktree = "worktree"
 )
@@ -100,6 +102,15 @@ var builtinCommands = []BuiltinCommand{
 		complete: completeListCommand,
 	},
 	{
+		Name:        CommandDirs,
+		ShowInUsage: true,
+		Help: []HelpEntry{
+			{Usage: "dirs [filter]", Description: "List repo directories (name and absolute path)"},
+			{Usage: "dirs --root", Description: "Print the workspace root path"},
+		},
+		complete: completeDirsCommand,
+	},
+	{
 		Name:        CommandFetch,
 		ShowInUsage: true,
 		Help: []HelpEntry{
@@ -153,6 +164,16 @@ var builtinCommands = []BuiltinCommand{
 			{Usage: "wt add <branch> [filter]", Description: "Alias for worktree"},
 		},
 		complete: completeWorktreeCommand,
+	},
+	{
+		Name:        CommandAgent,
+		ShowInUsage: true,
+		Help: []HelpEntry{
+			{Usage: "agent [--agent name] [repo] [-- args...]", Description: "Start an AI agent session"},
+			{Usage: "agent ls [-v] [-n N | --all] [filter]", Description: "List agent sessions across workspace"},
+			{Usage: "agent resume <#|id>", Description: "Resume a previous agent session"},
+		},
+		complete: completeAgentCommand,
 	},
 }
 

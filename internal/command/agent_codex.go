@@ -1,0 +1,85 @@
+package command
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// discoverCodexSessions queries ~/.codex/state_5.sqlite for threads
+// whose cwd matches the workspace path index.
+func discoverCodexSessions(pathIndex map[string]string) []AgentSession {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	dbPath := filepath.Join(home, ".codex", "state_5.sqlite")
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil
+	}
+
+	sqlite3, err := exec.LookPath("sqlite3")
+	if err != nil {
+		return nil
+	}
+
+	query := `SELECT id, cwd, first_user_message, model, created_at, updated_at FROM threads ORDER BY updated_at DESC`
+	cmd := exec.Command(sqlite3, "-separator", "\t", dbPath, query)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+
+	var sessions []AgentSession
+	for _, line := range strings.Split(out.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		fields := strings.SplitN(line, "\t", 6)
+		if len(fields) < 6 {
+			continue
+		}
+
+		id := fields[0]
+		cwd := fields[1]
+		prompt := fields[2]
+		model := fields[3]
+		createdAt := parseUnixSeconds(fields[4])
+		updatedAt := parseUnixSeconds(fields[5])
+
+		repo, ok := matchSessionRepo(cwd, pathIndex)
+		if !ok {
+			continue
+		}
+
+		sessions = append(sessions, AgentSession{
+			Agent:      agentCodex,
+			SessionID:  id,
+			Repo:       repo,
+			Dir:        cwd,
+			StartedAt:  createdAt,
+			LastActive: updatedAt,
+			Prompt:     prompt,
+			Model:      model,
+		})
+	}
+
+	return sessions
+}
+
+func parseUnixSeconds(s string) time.Time {
+	sec, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return time.Unix(sec, 0)
+}
