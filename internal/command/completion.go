@@ -118,7 +118,7 @@ func completeAgentCommand(m *manifest.Manifest, args []string, current int) Comp
 	}
 	currentWord := completionWord(args, current)
 	if current == 0 {
-		values := []string{"list", "ls", "resume", "--agent", "-a"}
+		values := []string{"list", "ls", "resume", "pin", "unpin", "--agent", "-a"}
 		values = append(values, repoSuggestions(m)...)
 		return finalizeCompletion(values, currentWord, false)
 	}

@@ -30,6 +30,7 @@ type AgentSession struct {
 	Model             string   // model used (optional)
 	Active            bool     // true if the agent process is still running
 	BypassPermissions bool     // session was launched with permission bypass (e.g., --dangerously-skip-permissions)
+	Pinned            bool     // session is pinned in the workspace pins file
 }
 
 const (
@@ -77,8 +78,11 @@ func AgentList(m *manifest.Manifest, wsHome, filter string, includeWorktrees boo
 		return nil
 	}
 
+	pins, _ := loadAgentPins(wsHome)
+	sessions = applyAgentPins(sessions, pins)
+
 	if limit > 0 && len(sessions) > limit {
-		sessions = sessions[:limit]
+		sessions = truncatePreservingPins(sessions, limit)
 	}
 
 	if mode.Verbose {
@@ -108,6 +112,91 @@ func AgentResume(m *manifest.Manifest, wsHome string, indexOrID string) error {
 	fmt.Println(session.Dir)
 	fmt.Println(resumeCmd)
 	return nil
+}
+
+// AgentPin adds a session to the workspace pins file. If ref is empty,
+// the current session is detected by walking ancestor process PIDs.
+func AgentPin(m *manifest.Manifest, wsHome, ref string) error {
+	sessionID, label, err := resolvePinTarget(m, wsHome, ref)
+	if err != nil {
+		return err
+	}
+	added, err := addAgentPin(wsHome, sessionID)
+	if err != nil {
+		return err
+	}
+	if !added {
+		fmt.Fprintf(os.Stderr, "Already pinned: %s\n", label)
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "Pinned %s\n", label)
+	return nil
+}
+
+// AgentUnpin removes a session from the workspace pins file. If ref is
+// empty, the current session is detected by walking ancestor process PIDs.
+func AgentUnpin(m *manifest.Manifest, wsHome, ref string) error {
+	sessionID, label, err := resolvePinTarget(m, wsHome, ref)
+	if err != nil {
+		return err
+	}
+	removed, err := removeAgentPin(wsHome, sessionID)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		fmt.Fprintf(os.Stderr, "Not pinned: %s\n", label)
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "Unpinned %s\n", label)
+	return nil
+}
+
+// resolvePinTarget returns (sessionID, displayLabel, err). If ref is empty,
+// uses current-session detection. Otherwise resolves the ref against the
+// list of discovered sessions (numeric index or ID prefix). When detection
+// is used and no session record matches, returns the raw detected ID.
+func resolvePinTarget(m *manifest.Manifest, wsHome, ref string) (string, string, error) {
+	if ref == "" {
+		sid, ok := detectCurrentAgentSession()
+		if !ok {
+			return "", "", fmt.Errorf("not inside an agent session; pass <#|id> explicitly")
+		}
+		// Try to enrich with repo/agent info for the confirmation message.
+		pathIndex := buildPathIndex(m, wsHome, "", false)
+		sessions := discoverAllSessions(pathIndex, false)
+		for _, s := range sessions {
+			if s.SessionID == sid {
+				return sid, pinLabel(s), nil
+			}
+		}
+		return sid, shortSessionID(sid), nil
+	}
+
+	pathIndex := buildPathIndex(m, wsHome, "", false)
+	sessions := discoverAllSessions(pathIndex, false)
+	if len(sessions) == 0 {
+		return "", "", fmt.Errorf("no agent sessions found in this workspace")
+	}
+	pins, _ := loadAgentPins(wsHome)
+	sessions = applyAgentPins(sessions, pins)
+
+	session, err := resolveSessionRef(sessions, ref)
+	if err != nil {
+		return "", "", err
+	}
+	return session.SessionID, pinLabel(session), nil
+}
+
+func pinLabel(s AgentSession) string {
+	return fmt.Sprintf("%s (%s/%s)", shortSessionID(s.SessionID), s.Agent, s.Repo)
+}
+
+func shortSessionID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }
 
 // AgentStart outputs the directory and start command for an agent.
@@ -319,6 +408,50 @@ func externalRepoLabel(dir string) string {
 	return base
 }
 
+// applyAgentPins marks sessions with the Pinned flag and sorts pinned
+// sessions first (preserving the existing LastActive order within each group).
+func applyAgentPins(sessions []AgentSession, pins map[string]bool) []AgentSession {
+	if len(pins) == 0 {
+		return sessions
+	}
+	for i := range sessions {
+		if pins[sessions[i].SessionID] {
+			sessions[i].Pinned = true
+		}
+	}
+	sort.SliceStable(sessions, func(i, j int) bool {
+		return sessions[i].Pinned && !sessions[j].Pinned
+	})
+	return sessions
+}
+
+// truncatePreservingPins returns the first `limit` sessions, ensuring all
+// pinned sessions are included even if they would otherwise fall past it.
+func truncatePreservingPins(sessions []AgentSession, limit int) []AgentSession {
+	if limit <= 0 || len(sessions) <= limit {
+		return sessions
+	}
+
+	pinned := make([]AgentSession, 0)
+	unpinned := make([]AgentSession, 0, len(sessions))
+	for _, s := range sessions {
+		if s.Pinned {
+			pinned = append(pinned, s)
+		} else {
+			unpinned = append(unpinned, s)
+		}
+	}
+
+	remaining := limit - len(pinned)
+	if remaining < 0 {
+		remaining = 0
+	}
+	if remaining < len(unpinned) {
+		unpinned = unpinned[:remaining]
+	}
+	return append(pinned, unpinned...)
+}
+
 func filterSessionsByRepo(sessions []AgentSession, repoName string) []AgentSession {
 	filtered := make([]AgentSession, 0, len(sessions))
 	for _, s := range sessions {
@@ -433,7 +566,12 @@ func printAgentSessionsCompact(sessions []AgentSession, now time.Time, termWidth
 
 	for i, s := range sessions {
 		activeMarker := " "
-		if s.Active {
+		switch {
+		case s.Pinned && s.Active:
+			activeMarker = term.Colorize(term.Yellow, "P")
+		case s.Pinned:
+			activeMarker = term.Colorize(term.Yellow, "p")
+		case s.Active:
 			activeMarker = "*"
 		}
 
@@ -472,9 +610,12 @@ func printAgentSessionsVerbose(sessions []AgentSession, now time.Time, termWidth
 	indent := strings.Repeat(" ", idxWidth+2)
 
 	for i, s := range sessions {
-		activeMarker := ""
+		markers := ""
+		if s.Pinned {
+			markers += " " + term.Colorize(term.Yellow, "[pinned]")
+		}
 		if s.Active {
-			activeMarker = " *"
+			markers += " *"
 		}
 
 		when := formatTimeAgo(now, s.LastActive)
@@ -485,7 +626,7 @@ func printAgentSessionsVerbose(sessions []AgentSession, now time.Time, termWidth
 			term.Colorize(agentTypeColor(s.Agent), s.Agent),
 			s.Repo,
 			term.Colorize(term.Dim, when),
-			activeMarker,
+			markers,
 		)
 
 		// Summary (recap) if available — most useful context

@@ -381,3 +381,74 @@ repos:
 	assert.Contains(t, result.Values, "--all")
 	assert.Contains(t, result.Values, "-n")
 }
+
+func TestAgentPinsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+
+	pins, err := loadAgentPins(dir)
+	require.NoError(t, err)
+	assert.Empty(t, pins)
+
+	added, err := addAgentPin(dir, "abc-123")
+	require.NoError(t, err)
+	assert.True(t, added)
+
+	added, err = addAgentPin(dir, "abc-123")
+	require.NoError(t, err)
+	assert.False(t, added, "re-add should be a no-op")
+
+	pins, err = loadAgentPins(dir)
+	require.NoError(t, err)
+	assert.True(t, pins["abc-123"])
+
+	removed, err := removeAgentPin(dir, "abc-123")
+	require.NoError(t, err)
+	assert.True(t, removed)
+
+	removed, err = removeAgentPin(dir, "abc-123")
+	require.NoError(t, err)
+	assert.False(t, removed)
+
+	// File should be cleaned up when no pins remain.
+	_, err = os.Stat(filepath.Join(dir, agentPinsFile))
+	assert.True(t, os.IsNotExist(err), "pins file should be removed when empty")
+}
+
+func TestApplyAgentPinsSortsPinnedFirst(t *testing.T) {
+	now := time.Now()
+	sessions := []AgentSession{
+		{SessionID: "fresh", LastActive: now},
+		{SessionID: "older", LastActive: now.Add(-time.Hour)},
+		{SessionID: "oldest", LastActive: now.Add(-24 * time.Hour)},
+	}
+
+	result := applyAgentPins(sessions, map[string]bool{"oldest": true})
+
+	assert.Equal(t, "oldest", result[0].SessionID)
+	assert.True(t, result[0].Pinned)
+	assert.Equal(t, "fresh", result[1].SessionID)
+	assert.False(t, result[1].Pinned)
+}
+
+func TestTruncatePreservingPinsKeepsPins(t *testing.T) {
+	sessions := []AgentSession{
+		{SessionID: "p1", Pinned: true},
+		{SessionID: "a"},
+		{SessionID: "b"},
+		{SessionID: "c"},
+		{SessionID: "p2", Pinned: true},
+	}
+
+	// Limit of 2 should keep both pins and drop every unpinned entry.
+	result := truncatePreservingPins(sessions, 2)
+	require.Len(t, result, 2)
+	assert.Equal(t, "p1", result[0].SessionID)
+	assert.Equal(t, "p2", result[1].SessionID)
+
+	// Limit of 3 keeps pins plus one unpinned (first in input order).
+	result = truncatePreservingPins(sessions, 3)
+	require.Len(t, result, 3)
+	assert.Equal(t, "p1", result[0].SessionID)
+	assert.Equal(t, "p2", result[1].SessionID)
+	assert.Equal(t, "a", result[2].SessionID)
+}

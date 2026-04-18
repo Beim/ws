@@ -258,6 +258,15 @@ func parseAgentArgs(args []string) (agentArgs, error) {
 			return agentArgs{}, fmt.Errorf("usage: ws agent resume <#|session-id>")
 		}
 		return agentArgs{Action: "resume", IndexOrID: wsArgs[1]}, nil
+	case "pin", "unpin":
+		if len(wsArgs) > 2 {
+			return agentArgs{}, fmt.Errorf("usage: ws agent %s [<#|session-id>]", wsArgs[0])
+		}
+		a := agentArgs{Action: wsArgs[0]}
+		if len(wsArgs) == 2 {
+			a.IndexOrID = wsArgs[1]
+		}
+		return a, nil
 	default:
 		return parseAgentStartArgs(wsArgs, passthrough)
 	}

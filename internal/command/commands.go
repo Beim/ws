@@ -327,6 +327,8 @@ Alias: wt
 			{Usage: "agent [--agent name] [repo] [-- args...]", Description: "Start an AI agent session"},
 			{Usage: "agent list [-v] [-n N | --all] [filter]", Description: "List agent sessions (alias: ls)"},
 			{Usage: "agent resume <#|id>", Description: "Resume a previous agent session"},
+			{Usage: "agent pin [<#|id>]", Description: "Pin a session (no arg = current)"},
+			{Usage: "agent unpin [<#|id>]", Description: "Unpin a session (no arg = current)"},
 		},
 		DetailedHelp: `Usage: ws agent [subcommand] [options]
 
@@ -336,6 +338,8 @@ Subcommands:
   (default)                          Start an agent session
   list|ls [-v] [-n N|--all] [filter] List sessions
   resume <#|id>                      Resume a previous session
+  pin [<#|id>]                       Pin a session (no arg = current)
+  unpin [<#|id>]                     Unpin a session (no arg = current)
 
 Start options:
   --agent, -a <name>   Select an agent profile (default: $WS_AGENT or "claude")
@@ -352,9 +356,14 @@ List options:
                          root      Only sessions started in the workspace root
                          external  Sessions started outside this workspace
 
-Resume:
+Resume / pin / unpin:
   <#>                  Numeric index from the most recent listing
   <id>                 Partial session ID prefix
+  (pin/unpin, no arg)  Target the session the shell is running inside
+
+Pinned sessions sort to the top of ` + "`ws agent ls`" + ` (marked P) and are
+kept visible even when the output is limited by -n. Pins are stored in
+` + "`.ws-agent-pins`" + ` at the workspace root.
 
 Agent profiles are configured in manifest (typically manifest.local.yml):
 

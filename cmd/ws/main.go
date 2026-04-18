@@ -334,6 +334,14 @@ dispatch:
 			if err := command.AgentResume(m, wsHome, parsed.IndexOrID); err != nil {
 				fatal(err)
 			}
+		case "pin":
+			if err := command.AgentPin(m, wsHome, parsed.IndexOrID); err != nil {
+				fatal(err)
+			}
+		case "unpin":
+			if err := command.AgentUnpin(m, wsHome, parsed.IndexOrID); err != nil {
+				fatal(err)
+			}
 		}
 
 	case command.CommandWorktree:
