@@ -22,6 +22,7 @@ func TestBuiltinCommandNames(t *testing.T) {
 		CommandContext,
 		CommandMux,
 		CommandWorktree,
+		CommandRemotes,
 		CommandAgent,
 	}, BuiltinCommandNames())
 }

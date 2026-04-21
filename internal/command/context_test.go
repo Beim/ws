@@ -15,7 +15,7 @@ import (
 func TestNormalizeContextFilter(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
   frontend: [repo-b]
@@ -34,7 +34,7 @@ repos:
 func TestNormalizeContextFilter_AllWins(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -51,7 +51,7 @@ repos:
 func TestNormalizeContextFilter_RejectsUnknown(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -66,7 +66,7 @@ repos:
 func TestNormalizeContextFilter_RejectsInvalidActivityFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -81,7 +81,7 @@ repos:
 func TestNormalizeContextFilter_AllowsActivityFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -100,7 +100,7 @@ func TestAddContext_MergesWithExistingContext(t *testing.T) {
 	m, err := parseManifestYAML(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
   frontend: [repo-b]
@@ -125,7 +125,7 @@ func TestSetContext_PrintsResolvedRepos(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -155,7 +155,7 @@ scopes:
   - dir: .all-repos
     source: all
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -179,7 +179,7 @@ root: repos
 workspace: ws.code-workspace
 scopes: []
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -201,7 +201,7 @@ scopes:
   - dir: .scoped
     source: context
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -223,7 +223,7 @@ func TestShowContext_PrintsResolvedRepos(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -248,7 +248,7 @@ func TestRefreshContext_RequiresExistingContext(t *testing.T) {
 	m, err := parseManifestYAML(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -265,7 +265,7 @@ func TestRefreshContext_ReresolvesDynamicFilter(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -309,7 +309,7 @@ func TestRefreshContext_ReresolvesWorktrees(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo:
 `)
@@ -341,7 +341,7 @@ func TestSetContext_ActiveIncludesDirtyAndRecentRepos(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -382,7 +382,7 @@ func TestSetContext_ActiveDurationRestrictsRecentMatches(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -422,7 +422,7 @@ func TestSetContext_MineDurationIncludesOnlyRecentLocalCommits(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -456,7 +456,7 @@ func TestAddContext_ActiveCombinesWithExistingContext(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -498,7 +498,7 @@ func TestAddContext_NoExistingContextBehavesLikeSetContext(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a, repo-b]
 repos:
@@ -526,7 +526,7 @@ func TestRemoveContext_SubtractsFromCurrentScope(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
   frontend: [repo-b]
@@ -556,7 +556,7 @@ func TestRemoveContext_FromResolvedAllScope(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -585,7 +585,7 @@ func TestRemoveContext_WorktreeTarget(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo:
 `)
@@ -611,7 +611,7 @@ func TestRemoveContext_RequiresExistingContext(t *testing.T) {
 	m, err := parseManifestYAML(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -628,7 +628,7 @@ func TestRemoveContext_RejectsEmptyResult(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -647,7 +647,7 @@ func TestSetContextAll_UsesOnlyClonedReposInResolvedScope(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -677,7 +677,7 @@ func TestSetContextNone_UsesOnlyClonedReposInResolvedScope(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -707,7 +707,7 @@ func TestSetContextFailureDoesNotOverwriteResolvedScope(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   empty: []
 repos:
@@ -734,7 +734,7 @@ func TestSetContext_RemovesLegacyResolvedContextFile(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -753,7 +753,7 @@ func TestResolveContextRepos_ExplicitLocalRepoStillIncluded(t *testing.T) {
 	m := loadManifestWithLocal(t, wsHome, `
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -776,7 +776,7 @@ func TestResolveContextRepos_AllIncludesOnlyClonedRepos(t *testing.T) {
 	m := loadManifestWithLocal(t, wsHome, `
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -801,7 +801,7 @@ func TestResolveCommandRepos_ExplicitWorktreeTarget(t *testing.T) {
 	m, err := parseManifestYAML(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo:
 `)
@@ -826,7 +826,7 @@ func TestGetDefaultContextForMode_CollapsesResolvedWorktreesWhenDisabled(t *test
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo:
   other:
@@ -856,7 +856,7 @@ func TestSwapContext_RestoresPreviousRaw(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -885,7 +885,7 @@ func TestSwapContext_NoPreviousAfterFirstSetErrors(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -905,7 +905,7 @@ func TestRefreshContext_PreservesPrevious(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -932,7 +932,7 @@ func TestSwapContext_ClearedPreviousSwapsToCleared(t *testing.T) {
 root: repos
 workspace: ws.code-workspace
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:

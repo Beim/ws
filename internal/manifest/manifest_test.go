@@ -16,8 +16,7 @@ const testManifest = `
 root: ..
 
 remotes:
-  default: git@github.com:acme-corp
-  upstream: git@github.com:open-source-org
+  origin: git@github.com:acme-corp
 
 branch: main
 
@@ -31,8 +30,14 @@ repos:
   worker: { branch: develop }
   web-app: { branch: develop }
   admin-dashboard:
-  custom-tool: { url: git@custom:org/repo.git }
-  upstream-lib: { remote: upstream, branch: stable }
+  custom-tool:
+    remotes:
+      origin: git@custom:org/repo.git
+  upstream-lib:
+    branch: stable
+    remotes:
+      upstream: git@github.com:open-source-org/upstream-lib.git
+    default_compare: upstream
 
 exclude:
   - legacy-api
@@ -43,8 +48,7 @@ func TestParse(t *testing.T) {
 	m, err := Parse([]byte(testManifest))
 	require.NoError(t, err)
 
-	assert.Equal(t, "git@github.com:acme-corp", m.Remotes["default"])
-	assert.Equal(t, "git@github.com:open-source-org", m.Remotes["upstream"])
+	assert.Equal(t, "git@github.com:acme-corp", m.Remotes["origin"])
 	assert.Equal(t, "main", m.DefaultBranch)
 	assert.Len(t, m.Groups["backend"], 3)
 	assert.Len(t, m.Groups["frontend"], 2)
@@ -59,7 +63,7 @@ func TestParse_CustomScopes(t *testing.T) {
 	m, err := Parse([]byte(`
 root: ..
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 scopes:
   - dir: .scope
     source: context
@@ -79,7 +83,7 @@ func TestParse_RejectsInvalidScopeDir(t *testing.T) {
 	_, err := Parse([]byte(`
 root: ..
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 scopes:
   - dir: ../outside
 repos:
@@ -93,7 +97,7 @@ func TestParse_RejectsInvalidScopeSource(t *testing.T) {
 	_, err := Parse([]byte(`
 root: ..
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 scopes:
   - dir: .scope
     source: weird
@@ -110,8 +114,8 @@ func TestParse_BareRepoEntry(t *testing.T) {
 
 	cfg := m.Repos["api-server"]
 	assert.Empty(t, cfg.Branch)
-	assert.Empty(t, cfg.Remote)
-	assert.Empty(t, cfg.URL)
+	assert.Empty(t, cfg.Remotes)
+	assert.Empty(t, cfg.DefaultCompare)
 	assert.Equal(t, "main", m.ResolveBranch(cfg))
 }
 
@@ -134,7 +138,9 @@ func TestResolveURL(t *testing.T) {
 	}{
 		{"api-server", "git@github.com:acme-corp/api-server.git"},
 		{"custom-tool", "git@custom:org/repo.git"},
-		{"upstream-lib", "git@github.com:open-source-org/upstream-lib.git"},
+		// ResolveURL returns the effective origin. upstream-lib declares an
+		// `upstream` remote but its origin falls back to the top-level prefix.
+		{"upstream-lib", "git@github.com:acme-corp/upstream-lib.git"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -202,7 +208,7 @@ func TestResolveFilter_AllIncludesMergedLocalRepos(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -265,12 +271,12 @@ scopes:
     source: all
 worktrees: true
 
-remotes:
-  my-fork: git@github.com:darren
-
 repos:
   legacy-api:
-  my-experiment: { remote: my-fork, branch: dev }
+  my-experiment:
+    branch: dev
+    remotes:
+      origin: git@github.com:darren/my-experiment.git
 
 exclude:
   - api-server
@@ -284,9 +290,10 @@ groups:
 	m, err := LoadWithLocal(dir)
 	require.NoError(t, err)
 
-	// Remotes merged
-	assert.Equal(t, "git@github.com:darren", m.Remotes["my-fork"])
-	assert.Equal(t, "git@github.com:acme-corp", m.Remotes["default"]) // preserved
+	// Top-level origin prefix preserved from main
+	assert.Equal(t, "git@github.com:acme-corp", m.Remotes["origin"])
+	// my-experiment's origin comes from its per-repo literal
+	assert.Equal(t, "git@github.com:darren/my-experiment.git", m.ResolveURL("my-experiment", m.Repos["my-experiment"]))
 	assert.Equal(t, []ScopeDirConfig{
 		{Dir: ".scope", Source: ScopeSourceContext},
 		{Dir: ".all", Source: ScopeSourceAll},
@@ -317,7 +324,7 @@ func TestMergeLocal_ScopesCanBeDisabled(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.yml"), []byte(`
 root: ..
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `), 0644))
@@ -343,7 +350,7 @@ func TestParse_DefaultBranch(t *testing.T) {
 	yaml := `
 root: ..
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   my-repo:
 `
@@ -357,7 +364,7 @@ func TestParse_WorktreesExplicitTrue(t *testing.T) {
 root: ..
 worktrees: true
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   my-repo:
 `
@@ -372,7 +379,7 @@ func TestMergeLocal_WorktreesCanDisable(t *testing.T) {
 root: ..
 worktrees: true
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   my-repo:
 `
@@ -396,7 +403,7 @@ mux:
   windows:
     - {name: editor, dir: my-repo}
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   my-repo:
 `
@@ -414,7 +421,7 @@ mux:
   windows:
     - {name: dev, dir: api, panes: 2, sizes: [70, 30], layout: even-horizontal}
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   api:
 `
@@ -431,7 +438,7 @@ mux:
   windows:
     - {name: dev, dir: api, cmd: cc}
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   api:
 `
@@ -450,7 +457,7 @@ mux:
       panes: 2
       cmd: [cc, ""]
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   api:
 `
@@ -474,7 +481,7 @@ mux:
       windows:
         - {name: logs, dir: infra}
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   api:
   infra:
@@ -565,7 +572,7 @@ root: ..
 mux:
   backend: tmux
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   my-repo:
 `
@@ -577,7 +584,7 @@ repos:
 func TestParse_RequiresRoot(t *testing.T) {
 	_, err := Parse([]byte(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   my-repo:
 `))
@@ -598,7 +605,7 @@ func TestParse_RejectsPathTraversalRepoName(t *testing.T) {
 	}
 	for _, name := range tests {
 		t.Run(name, func(t *testing.T) {
-			yaml := fmt.Sprintf("root: ..\nremotes:\n  default: git@example.com\nrepos:\n  %q:\n", name)
+			yaml := fmt.Sprintf("root: ..\nremotes:\n  origin: git@example.com:org\nrepos:\n  %q:\n", name)
 			_, err := Parse([]byte(yaml))
 			assert.Error(t, err, "expected error for repo name %q", name)
 		})
@@ -609,7 +616,7 @@ func TestParse_RejectsCommaGroupName(t *testing.T) {
 	_, err := Parse([]byte(`
 root: ..
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   comma,group: [repo-a]
 repos:
@@ -655,7 +662,7 @@ func TestResolvePath_PerRepoRoot(t *testing.T) {
 	yaml := `
 root: ..
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   normal-repo:
   special-repo: { root: /opt/external }
@@ -685,6 +692,127 @@ func TestAllRepos_PathPopulated(t *testing.T) {
 		assert.NotEmpty(t, r.Path, "Path should be populated for %s", r.Name)
 		assert.Contains(t, r.Path, r.Name)
 	}
+}
+
+func TestResolveRemotes_MergesTopLevelAndPerRepo(t *testing.T) {
+	m, err := Parse([]byte(testManifest))
+	require.NoError(t, err)
+
+	effective := m.ResolveRemotes("upstream-lib", m.Repos["upstream-lib"])
+	assert.Equal(t, "git@github.com:acme-corp/upstream-lib.git", effective["origin"])
+	assert.Equal(t, "git@github.com:open-source-org/upstream-lib.git", effective["upstream"])
+}
+
+func TestResolveRemotes_PerRepoOverridesTopLevel(t *testing.T) {
+	m, err := Parse([]byte(testManifest))
+	require.NoError(t, err)
+
+	effective := m.ResolveRemotes("custom-tool", m.Repos["custom-tool"])
+	assert.Equal(t, "git@custom:org/repo.git", effective["origin"])
+}
+
+func TestRepoInfoFor_PopulatesRemotesAndDefaultCompare(t *testing.T) {
+	m, err := Parse([]byte(testManifest))
+	require.NoError(t, err)
+
+	info := m.RepoInfoFor(testWSHome, "upstream-lib", m.Repos["upstream-lib"], nil)
+	assert.Equal(t, "upstream", info.DefaultCompare)
+	assert.Len(t, info.Remotes, 2)
+	assert.Equal(t, info.URL, info.Remotes["origin"])
+}
+
+func TestParse_RejectsLegacyURL(t *testing.T) {
+	_, err := Parse([]byte(`
+root: ..
+remotes:
+  origin: git@example.com:org
+repos:
+  legacy-repo: { url: git@github.com:org/repo.git }
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no longer supported")
+	assert.Contains(t, err.Error(), `"url"`)
+}
+
+func TestParse_RejectsLegacyRemote(t *testing.T) {
+	_, err := Parse([]byte(`
+root: ..
+remotes:
+  origin: git@example.com:org
+repos:
+  legacy-repo: { remote: upstream }
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no longer supported")
+	assert.Contains(t, err.Error(), `"remote"`)
+}
+
+func TestParse_RejectsMissingOrigin(t *testing.T) {
+	_, err := Parse([]byte(`
+root: ..
+repos:
+  orphan:
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no effective origin")
+}
+
+func TestParse_RejectsUnknownDefaultCompare(t *testing.T) {
+	_, err := Parse([]byte(`
+root: ..
+remotes:
+  origin: git@example.com:org
+repos:
+  my-repo:
+    default_compare: bogus
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "default_compare")
+	assert.Contains(t, err.Error(), "bogus")
+}
+
+func TestParse_RejectsUnknownKey(t *testing.T) {
+	_, err := Parse([]byte(`
+root: ..
+remotes:
+  origin: git@example.com:org
+repos:
+  my-repo: { foo: bar }
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown key "foo"`)
+}
+
+func TestMergeLocal_RemotesMergeKeyByKey(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.yml"), []byte(`
+root: ..
+remotes:
+  origin: git@github.com:acme
+repos:
+  lib:
+    remotes:
+      upstream: git@github.com:open/lib.git
+    default_compare: upstream
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.local.yml"), []byte(`
+repos:
+  lib:
+    remotes:
+      fork: git@github.com:me/lib.git
+      upstream: git@github.com:new-owner/lib.git
+`), 0644))
+
+	m, err := LoadWithLocal(dir)
+	require.NoError(t, err)
+
+	cfg := m.Repos["lib"]
+	// Added key from local
+	assert.Equal(t, "git@github.com:me/lib.git", cfg.Remotes["fork"])
+	// Overridden key
+	assert.Equal(t, "git@github.com:new-owner/lib.git", cfg.Remotes["upstream"])
+	// Preserved scalar from main
+	assert.Equal(t, "upstream", cfg.DefaultCompare)
 }
 
 func repoNames(repos []RepoInfo) []string {

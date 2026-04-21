@@ -18,7 +18,7 @@ type Manifest struct {
 	Worktrees     bool                // default worktree expansion behavior for supported commands
 	WorktreeRoot  string              // directory for created worktrees (default ".worktrees")
 	Mux           MuxConfig           // terminal multiplexer configuration
-	Remotes       map[string]string   // name → URL prefix ("default" is the fallback)
+	Remotes       map[string]string   // name → URL prefix; "/<repo>.git" appended at resolve time. "origin" is the clone source.
 	DefaultBranch string              // default branch for all repos
 	Groups        map[string][]string // group name → ordered repo names
 	Repos         map[string]RepoConfig
@@ -43,20 +43,22 @@ type ScopeDirConfig struct {
 
 // RepoConfig holds per-repo overrides.
 type RepoConfig struct {
-	Branch string // empty = use DefaultBranch
-	Remote string // empty = use "default" remote
-	URL    string // non-empty = full clone URL (overrides Remote)
-	Root   string // empty = use manifest Root; relative resolved against wsHome
+	Branch         string            // empty = use DefaultBranch
+	Root           string            // empty = use manifest Root; relative resolved against wsHome
+	Remotes        map[string]string // name → full URL; merged over top-level Remotes (per-repo wins)
+	DefaultCompare string            // remote name ("origin", "upstream", …) to compare against in ll; must exist in effective remotes
 }
 
 // RepoInfo is a fully resolved repo entry.
 type RepoInfo struct {
-	Name     string
-	URL      string
-	Branch   string
-	Groups   []string
-	Path     string // absolute path to repo on disk
-	Worktree string // non-empty when this RepoInfo targets a specific linked worktree
+	Name           string
+	URL            string            // effective origin URL
+	Branch         string
+	Groups         []string
+	Path           string            // absolute path to repo on disk
+	Worktree       string            // non-empty when this RepoInfo targets a specific linked worktree
+	Remotes        map[string]string // effective remotes map, name → full URL (includes origin)
+	DefaultCompare string            // passthrough from RepoConfig; empty when unset
 }
 
 // MuxConfig holds terminal multiplexer configuration.
@@ -208,12 +210,30 @@ type rawManifest struct {
 	Worktrees    *bool                     `yaml:"worktrees"`      // default worktree behavior
 	WorktreeRoot string                    `yaml:"worktree_root"` // directory for created worktrees
 	Mux          *rawMuxConfig             `yaml:"mux"`           // terminal multiplexer config
-	Remotes   map[string]string            `yaml:"remotes"`   // named remotes
+	Remotes   map[string]string            `yaml:"remotes"`   // named URL prefixes
 	Branch    string                       `yaml:"branch"`
 	Groups    map[string][]string          `yaml:"groups"`
-	Repos     map[string]map[string]string `yaml:"repos"`
+	Repos     map[string]yaml.Node         `yaml:"repos"`     // decoded per-entry to surface legacy keys
 	Exclude   []string                     `yaml:"exclude"`
 	Agents    map[string]string            `yaml:"agents"` // agent profile name → shell command
+}
+
+// rawRepoConfig is the per-repo YAML shape.
+type rawRepoConfig struct {
+	Branch         string            `yaml:"branch"`
+	Root           string            `yaml:"root"`
+	Remotes        map[string]string `yaml:"remotes"`
+	DefaultCompare string            `yaml:"default_compare"`
+}
+
+// knownRepoKeys lists every field rawRepoConfig accepts. Any other key in a
+// repo entry is flagged so legacy `url:` / `remote:` fail loudly with a
+// migration message instead of being silently ignored by yaml.v3.
+var knownRepoKeys = map[string]bool{
+	"branch":          true,
+	"root":            true,
+	"remotes":         true,
+	"default_compare": true,
 }
 
 type rawScopeDir struct {
@@ -305,22 +325,111 @@ func parse(data []byte, requireRoot bool) (*Manifest, error) {
 		m.Remotes[name] = url
 	}
 
-	// Repos: handle nil values (bare YAML entries like "my-repo:")
-	for name, cfg := range raw.Repos {
+	// Repos: handle nil values (bare YAML entries like "my-repo:") plus
+	// detect legacy `url:` / `remote:` keys explicitly so we can emit a
+	// migration error rather than silently dropping them.
+	for name, node := range raw.Repos {
 		if err := ValidateName(name); err != nil {
 			return nil, fmt.Errorf("repo %q: %w", name, err)
 		}
-		rc := RepoConfig{}
-		if cfg != nil {
-			rc.Branch = cfg["branch"]
-			rc.Remote = cfg["remote"]
-			rc.URL = cfg["url"]
-			rc.Root = cfg["root"]
+		rc, err := decodeRepoConfig(name, node)
+		if err != nil {
+			return nil, err
 		}
 		m.Repos[name] = rc
 	}
 
+	// Validate effective remotes per repo: origin must exist, every URL must
+	// pass ValidateURL, and default_compare (if set) must name a known remote.
+	// Skip for partial manifests (local overrides); MergeLocal revalidates
+	// against the merged state.
+	if requireRoot {
+		if err := validateRepoRemotes(m); err != nil {
+			return nil, err
+		}
+	}
+
 	return m, nil
+}
+
+// decodeRepoConfig converts a raw YAML node for a single repo entry into a
+// RepoConfig. A null/missing node (bare entry like "my-repo:") yields a zero
+// RepoConfig. Legacy `url:` / `remote:` keys produce a migration error.
+func decodeRepoConfig(name string, node yaml.Node) (RepoConfig, error) {
+	// Null scalar or empty node: bare entry.
+	if node.Kind == 0 || (node.Kind == yaml.ScalarNode && (node.Tag == "!!null" || node.Value == "")) {
+		return RepoConfig{}, nil
+	}
+	if node.Kind != yaml.MappingNode {
+		return RepoConfig{}, fmt.Errorf("repo %q: expected a mapping", name)
+	}
+	// yaml mapping nodes pair up key/value in Content: [k1, v1, k2, v2, ...].
+	for i := 0; i < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		if key == "url" || key == "remote" {
+			return RepoConfig{}, fmt.Errorf(
+				"repo %q: %q is no longer supported; use the `remotes:` map (see UPGRADING.md)", name, key)
+		}
+		if !knownRepoKeys[key] {
+			return RepoConfig{}, fmt.Errorf("repo %q: unknown key %q", name, key)
+		}
+	}
+	var raw rawRepoConfig
+	if err := node.Decode(&raw); err != nil {
+		return RepoConfig{}, fmt.Errorf("repo %q: %w", name, err)
+	}
+	return RepoConfig{
+		Branch:         raw.Branch,
+		Root:           raw.Root,
+		Remotes:        raw.Remotes,
+		DefaultCompare: raw.DefaultCompare,
+	}, nil
+}
+
+// validateRepoRemotes runs the per-repo remote checks after parse/merge.
+func validateRepoRemotes(m *Manifest) error {
+	for name, cfg := range m.Repos {
+		effective := m.ResolveRemotes(name, cfg)
+		if _, ok := effective["origin"]; !ok {
+			return fmt.Errorf("repo %q: no effective origin remote "+
+				"(set `remotes.origin` at the top level or on the repo)", name)
+		}
+		for rname, url := range effective {
+			if !validRemoteName(rname) {
+				return fmt.Errorf("repo %q: invalid remote name %q", name, rname)
+			}
+			if err := ValidateURL(url); err != nil {
+				return fmt.Errorf("repo %q: remote %q: %w", name, rname, err)
+			}
+		}
+		if cfg.DefaultCompare != "" {
+			if _, ok := effective[cfg.DefaultCompare]; !ok {
+				return fmt.Errorf(
+					"repo %q: default_compare %q does not match any declared remote",
+					name, cfg.DefaultCompare)
+			}
+		}
+	}
+	return nil
+}
+
+// validRemoteName mirrors git's own constraints loosely: non-empty, no slashes
+// or whitespace, no leading dash.
+func validRemoteName(name string) bool {
+	if name == "" || strings.HasPrefix(name, "-") {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'A' && r <= 'Z',
+			r >= 'a' && r <= 'z',
+			r >= '0' && r <= '9',
+			r == '_', r == '-', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // ValidateName ensures a repo or group name is safe to use as a manifest key
@@ -403,9 +512,33 @@ func (m *Manifest) MergeLocal(path string) error {
 		m.Remotes[name] = url
 	}
 
-	// Repos: union, local wins on conflict
-	for name, cfg := range local.Repos {
-		m.Repos[name] = cfg
+	// Repos: union, local wins at the repo level. Within an existing repo,
+	// Remotes merge key-by-key (local adds + local overrides); DefaultCompare
+	// and other scalars are wholesale-replaced when set by local.
+	for name, lcfg := range local.Repos {
+		if existing, ok := m.Repos[name]; ok {
+			merged := existing
+			if lcfg.Branch != "" {
+				merged.Branch = lcfg.Branch
+			}
+			if lcfg.Root != "" {
+				merged.Root = lcfg.Root
+			}
+			if lcfg.DefaultCompare != "" {
+				merged.DefaultCompare = lcfg.DefaultCompare
+			}
+			if len(lcfg.Remotes) > 0 {
+				if merged.Remotes == nil {
+					merged.Remotes = make(map[string]string, len(lcfg.Remotes))
+				}
+				for k, v := range lcfg.Remotes {
+					merged.Remotes[k] = v
+				}
+			}
+			m.Repos[name] = merged
+		} else {
+			m.Repos[name] = lcfg
+		}
 	}
 
 	// Exclude: union
@@ -432,7 +565,8 @@ func (m *Manifest) MergeLocal(path string) error {
 		m.Agents[name] = cmd
 	}
 
-	return nil
+	// Revalidate remote invariants against the merged state.
+	return validateRepoRemotes(m)
 }
 
 func parseMuxConfig(raw rawMuxConfig) MuxConfig {
@@ -525,20 +659,41 @@ func normalizeScopeDirConfig(raw rawScopeDir) (ScopeDirConfig, error) {
 	}, nil
 }
 
-// ResolveURL constructs the clone URL for a repo.
+// ResolveRemotes returns the effective remotes map for a repo: top-level
+// URL-prefix entries with "/<name>.git" appended, overlaid with per-repo
+// literal URLs (per-repo wins on matching keys). The returned map always
+// includes "origin" for any manifest that passed validateRepoRemotes.
+func (m *Manifest) ResolveRemotes(name string, cfg RepoConfig) map[string]string {
+	out := make(map[string]string, len(m.Remotes)+len(cfg.Remotes))
+	for k, prefix := range m.Remotes {
+		out[k] = prefix + "/" + name + ".git"
+	}
+	for k, url := range cfg.Remotes {
+		out[k] = url
+	}
+	return out
+}
+
+// ResolveURL returns the effective origin clone URL. Thin wrapper around
+// ResolveRemotes for call-sites that only need the primary URL.
 func (m *Manifest) ResolveURL(name string, cfg RepoConfig) string {
-	if cfg.URL != "" {
-		return cfg.URL
+	return m.ResolveRemotes(name, cfg)["origin"]
+}
+
+// RepoInfoFor builds a fully populated RepoInfo for the given repo.
+// Centralises construction so every call-site surfaces Remotes and
+// DefaultCompare consistently.
+func (m *Manifest) RepoInfoFor(wsHome, name string, cfg RepoConfig, groups []string) RepoInfo {
+	remotes := m.ResolveRemotes(name, cfg)
+	return RepoInfo{
+		Name:           name,
+		URL:            remotes["origin"],
+		Branch:         m.ResolveBranch(cfg),
+		Groups:         groups,
+		Path:           m.ResolvePath(wsHome, name, cfg),
+		Remotes:        remotes,
+		DefaultCompare: cfg.DefaultCompare,
 	}
-	remoteName := cfg.Remote
-	if remoteName == "" {
-		remoteName = "default"
-	}
-	prefix := m.Remotes[remoteName]
-	if prefix == "" {
-		prefix = m.Remotes["default"]
-	}
-	return prefix + "/" + name + ".git"
 }
 
 // ResolveRoot returns the absolute path where repos live.
@@ -635,13 +790,7 @@ func (m *Manifest) AllRepos(wsHome string) []RepoInfo {
 
 	var result []RepoInfo
 	for name, cfg := range active {
-		result = append(result, RepoInfo{
-			Name:   name,
-			URL:    m.ResolveURL(name, cfg),
-			Branch: m.ResolveBranch(cfg),
-			Groups: repoGroups[name],
-			Path:   m.ResolvePath(wsHome, name, cfg),
-		})
+		result = append(result, m.RepoInfoFor(wsHome, name, cfg, repoGroups[name]))
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result
@@ -667,26 +816,12 @@ func (m *Manifest) ResolveFilter(filter, wsHome string) []RepoInfo {
 		if members, ok := m.Groups[token]; ok {
 			for _, name := range members {
 				if _, ok := active[name]; ok && !seen[name] {
-					cfg := active[name]
-					result = append(result, RepoInfo{
-						Name:   name,
-						URL:    m.ResolveURL(name, cfg),
-						Branch: m.ResolveBranch(cfg),
-						Groups: repoGroups[name],
-						Path:   m.ResolvePath(wsHome, name, cfg),
-					})
+					result = append(result, m.RepoInfoFor(wsHome, name, active[name], repoGroups[name]))
 					seen[name] = true
 				}
 			}
 		} else if _, ok := active[token]; ok && !seen[token] {
-			cfg := active[token]
-			result = append(result, RepoInfo{
-				Name:   token,
-				URL:    m.ResolveURL(token, cfg),
-				Branch: m.ResolveBranch(cfg),
-				Groups: repoGroups[token],
-				Path:   m.ResolvePath(wsHome, token, cfg),
-			})
+			result = append(result, m.RepoInfoFor(wsHome, token, active[token], repoGroups[token]))
 			seen[token] = true
 		} else if !seen[token] {
 			fmt.Fprintf(os.Stderr, "Warning: '%s' is not a known group or repo\n", token)

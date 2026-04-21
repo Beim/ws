@@ -16,6 +16,7 @@ const (
 	CommandDirs    = "dirs"
 	CommandMux      = "mux"
 	CommandWorktree = "worktree"
+	CommandRemotes  = "remotes"
 )
 
 // Category groups related commands under one heading in `ws help`.
@@ -210,10 +211,24 @@ Examples:
 		Name:        CommandFetch,
 		Category:    CategorySync,
 		ShowInUsage: true,
-		Summary:     HelpEntry{Usage: "[filter]", Description: "Fetch all repos"},
+		Summary:     HelpEntry{Usage: "[--remote <name>] [filter]", Description: "Fetch all remotes (or specific ones)"},
 		Help: []HelpEntry{
-			{Usage: "fetch [filter]", Description: "Fetch all repos"},
+			{Usage: "fetch [filter]", Description: "Fetch every configured remote per repo"},
+			{Usage: "fetch --remote <name> [filter]", Description: "Fetch only the named remote; repeatable"},
 		},
+		DetailedHelp: `Usage: ws fetch [--remote <name>]... [filter]
+
+By default, fetches every configured remote per repo (git fetch --all --prune).
+With --remote, fetches only the named remotes; repos that don't declare a
+requested remote are skipped with a warning. The flag can be given multiple
+times to fetch a specific set of remotes.
+
+Examples:
+  ws fetch                            Fetch all remotes everywhere
+  ws fetch backend                    Fetch all remotes in the backend group
+  ws fetch --remote origin            Fetch only origin
+  ws fetch --remote origin --remote upstream ai
+`,
 		complete: completeFetchCommand,
 	},
 	{
@@ -317,6 +332,27 @@ Subcommands:
 Alias: wt
 `,
 		complete: completeWorktreeCommand,
+	},
+	{
+		Name:        CommandRemotes,
+		Category:    CategorySync,
+		ShowInUsage: true,
+		Summary:     HelpEntry{Usage: "sync [filter]", Description: "Reconcile declared remotes against checkouts"},
+		Help: []HelpEntry{
+			{Usage: "remotes sync [filter]", Description: "Add missing remotes on disk; warn on URL drift"},
+		},
+		DetailedHelp: `Usage: ws remotes sync [filter]
+
+Reconcile the remotes declared in manifest.yml against what's on disk.
+For each repo in the filter:
+  - missing remote      added via git remote add
+  - URL differs         warn with current vs manifest, leave unchanged
+  - unknown on-disk     ignored (may be a user-added remote)
+
+Never removes or renames remotes. Use when the manifest gains new remotes
+after a repo was already cloned.
+`,
+		complete: completeNoopCommand,
 	},
 	{
 		Name:        CommandAgent,

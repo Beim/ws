@@ -177,7 +177,7 @@ func TestResolveSessionRef_NoMatch(t *testing.T) {
 func TestResolveAgentCmd_FromManifest(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 agents:
   claude: IS_SANDBOX=1 claude --dangerously-skip-permissions
   codex: codex --yolo
@@ -193,7 +193,7 @@ repos:
 func TestResolveAgentCmd_FallbackToBinaryName(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -206,7 +206,7 @@ repos:
 func TestResolveAgentCmd_DefaultFromManifest(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 agents:
   default: cc
   cc: IS_SANDBOX=1 claude --skip
@@ -223,7 +223,7 @@ repos:
 func TestAgentResumeCmd_Claude(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 agents:
   claude: IS_SANDBOX=1 claude --skip
 repos:
@@ -239,7 +239,7 @@ repos:
 func TestAgentResumeCmd_Codex(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 agents:
   codex: codex --yolo
 repos:
@@ -290,7 +290,7 @@ func TestExternalRepoLabel(t *testing.T) {
 func TestBuildPathIndex_RootFilter(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -326,7 +326,7 @@ func TestReconcileClaudePermissionFlag(t *testing.T) {
 func TestAgentResumeCmd_ClaudeWithBypass(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 agents:
   claude: IS_SANDBOX=1 claude --dangerously-skip-permissions
 repos:
@@ -348,7 +348,7 @@ repos:
 func TestCompleteAgentTopLevel(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -366,7 +366,7 @@ repos:
 func TestCompleteAgentLsIncludesFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:

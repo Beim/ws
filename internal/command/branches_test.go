@@ -32,7 +32,7 @@ func TestLLWithBranches_PrintsCurrentAndOtherLocalBranches(t *testing.T) {
 
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 branch: master
 repos:
   api-server:

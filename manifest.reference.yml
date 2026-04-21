@@ -6,18 +6,23 @@
 # ---------------------------------------------------------------------------
 # remotes
 # ---------------------------------------------------------------------------
-# Named URL prefixes for git clone. The "default" remote is used when a repo
-# does not specify a remote: override.
+# Named URL prefixes for git clone. Clone URLs are constructed by appending
+# "/<repo-name>.git" to each prefix.
 #
-# Clone URLs are constructed as: <remote>/<repo-name>.git
-# e.g. git@github.com:acme-corp/api-server.git
+# The "origin" key is the clone source and must resolve for every repo
+# (either from a top-level prefix here or a per-repo full URL in repos.<name>.remotes.origin).
+#
+# Additional entries at this level (e.g. "upstream") are propagated to every
+# repo as extra git remotes, unless the per-repo block overrides them. They
+# use the same prefix-plus-name construction, so list them here only when
+# the upstream and local repo names coincide; otherwise set the full URL on
+# the specific repo.
 #
 # Allowed schemes: git@ (SSH shorthand), https://, ssh://, git://, http://
 # Rejected: ext::, file://, ftp://, or anything starting with --
 
 remotes:
-  default: git@github.com:acme-corp
-  upstream: https://github.com/open-source-org
+  origin: git@github.com:acme-corp
 
 # ---------------------------------------------------------------------------
 # branch
@@ -200,20 +205,24 @@ groups:
 # ---------------------------------------------------------------------------
 # Active repos. Each entry is cloned by ws setup and visible to all commands.
 #
-# Bare entries use the default remote and branch:
+# Bare entries use the top-level origin prefix and default branch:
 #   api-server:
 #
 # Override branch:
 #   auth-service: { branch: develop }
 #
-# Use a named remote (defined above in remotes:):
-#   upstream-lib: { remote: upstream }
+# Add extra git remotes (e.g. an upstream fork). Values are full URLs, merged
+# over the top-level remotes map. Per-repo keys override top-level keys.
+#   upstream-lib:
+#     branch: stable
+#     remotes:
+#       upstream: git@github.com:open-source-org/upstream-lib.git
+#     default_compare: upstream
 #
-# Use a full URL (ignores remotes entirely):
-#   custom-tool: { url: git@custom.host:org/repo.git }
-#
-# Combine overrides:
-#   special: { remote: upstream, branch: v2 }
+# Override the origin URL entirely (replaces the prefix-based default):
+#   custom-tool:
+#     remotes:
+#       origin: git@custom.host:org/repo.git
 #
 # Override the clone root for one repo:
 #   legacy-vendor: { root: vendor }
@@ -235,11 +244,17 @@ repos:
   deploy-configs:
   shared-protos:
 
-  # External dependency from a different remote
-  upstream-lib: { remote: upstream, branch: stable }
+  # Forked OSS repo: origin from the top-level prefix, upstream added literally.
+  upstream-lib:
+    branch: stable
+    remotes:
+      upstream: git@github.com:open-source-org/upstream-lib.git
+    default_compare: upstream
 
-  # Full URL override
-  custom-tool: { url: git@custom.host:org/repo.git }
+  # Bespoke origin URL that doesn't fit the prefix convention.
+  custom-tool:
+    remotes:
+      origin: git@custom.host:org/repo.git
 
 # ---------------------------------------------------------------------------
 # exclude
@@ -263,14 +278,15 @@ exclude:
 # It is merged on top of this manifest and should be gitignored.
 #
 # Merge rules:
-#   remotes:  union (local wins on name conflict)
-#   repos:    union (local wins on name conflict, un-excludes repos)
-#   exclude:  union (additive)
-#   groups:   local replaces same-name groups, new groups added
-#   root:     local overrides if set
-#   workspace: local overrides if set
-#   scopes:   local replaces the full list if set
-#   worktrees: local overrides if set
+#   remotes:        union (local wins on name conflict)
+#   repos:          union (local wins on name conflict, un-excludes repos)
+#   repos.*.remotes: key-by-key merge within a repo (local adds + local overrides)
+#   exclude:        union (additive)
+#   groups:         local replaces same-name groups, new groups added
+#   root:           local overrides if set
+#   workspace:      local overrides if set
+#   scopes:         local replaces the full list if set
+#   worktrees:      local overrides if set
 #
 # Example manifest.local.yml:
 #
@@ -282,12 +298,12 @@ exclude:
 #
 #   worktrees: true
 #
-#   remotes:
-#     my-fork: git@github.com:myuser
-#
 #   repos:
 #     legacy-api:                              # un-exclude for local work
-#     my-experiment: { remote: my-fork }
+#     my-experiment:
+#       branch: dev
+#       remotes:
+#         origin: git@github.com:myuser/my-experiment.git
 #
 #   exclude:
 #     - worker                                 # I don't need this locally

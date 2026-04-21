@@ -34,12 +34,14 @@ func expandReposToWorktrees(repos []manifest.RepoInfo) []manifest.RepoInfo {
 				worktreeName = worktreeDisplayName(set.Repo.Name, target.Name)
 			}
 			expanded = append(expanded, manifest.RepoInfo{
-				Name:     target.Name,
-				URL:      set.Repo.URL,
-				Branch:   target.Branch,
-				Groups:   set.Repo.Groups,
-				Path:     target.Path,
-				Worktree: worktreeName,
+				Name:           target.Name,
+				URL:            set.Repo.URL,
+				Branch:         target.Branch,
+				Groups:         set.Repo.Groups,
+				Path:           target.Path,
+				Worktree:       worktreeName,
+				Remotes:        set.Repo.Remotes,
+				DefaultCompare: set.Repo.DefaultCompare,
 			})
 		}
 	}
@@ -118,12 +120,14 @@ func resolveExplicitWorktreeTarget(repo manifest.RepoInfo, selector string) (man
 		}
 		if target.Name == repo.Name+"@"+selector || worktreeDisplayName(repo.Name, target.Name) == selector {
 			return manifest.RepoInfo{
-				Name:     target.Name,
-				URL:      repo.URL,
-				Branch:   target.Branch,
-				Groups:   repo.Groups,
-				Path:     target.Path,
-				Worktree: worktreeDisplayName(repo.Name, target.Name),
+				Name:           target.Name,
+				URL:            repo.URL,
+				Branch:         target.Branch,
+				Groups:         repo.Groups,
+				Path:           target.Path,
+				Worktree:       worktreeDisplayName(repo.Name, target.Name),
+				Remotes:        repo.Remotes,
+				DefaultCompare: repo.DefaultCompare,
 			}, nil
 		}
 	}

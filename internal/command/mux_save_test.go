@@ -613,7 +613,7 @@ func TestGenerateKDLLayout_NoCmdNoBashWrap(t *testing.T) {
 func TestCompleteMuxSuggestsSave(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)

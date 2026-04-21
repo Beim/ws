@@ -15,7 +15,7 @@ func TestSetupGuide_ListsGroupsWithCounts(t *testing.T) {
 	wsHome := t.TempDir()
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [api-server, auth-service, worker]
   frontend: [web-app, admin-ui]
@@ -56,7 +56,7 @@ func TestSetupGuide_EmptyGroupsOmitted(t *testing.T) {
 	wsHome := t.TempDir()
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   empty: []
   backend: [api-server]
@@ -79,7 +79,7 @@ func TestSetupGuide_NoGroups(t *testing.T) {
 	wsHome := t.TempDir()
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   solo:
 `)
@@ -98,7 +98,7 @@ func TestSetupGuide_NoActiveRepos(t *testing.T) {
 	wsHome := t.TempDir()
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 `)
 	require.NoError(t, err)
 
@@ -113,7 +113,7 @@ func TestSetupGuide_SampleTruncation(t *testing.T) {
 	wsHome := t.TempDir()
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   big: [a, b, c, d, e, f]
 repos:
@@ -170,7 +170,7 @@ func TestWriteWorkspace_SkipsUnclonedRepos(t *testing.T) {
 workspace: ws.code-workspace
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   cloned:
   uncloned:

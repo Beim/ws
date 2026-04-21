@@ -37,7 +37,7 @@ func TestShellInitDelegatesCompletionToWrappedCommand(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   mmdoc:
 `), 0644))
@@ -261,7 +261,7 @@ func TestParseContextArgs_RejectsUnknownFlag(t *testing.T) {
 func TestResolveCDTarget_InlineWorktree(t *testing.T) {
 	active := activeRepoConfigs(t, `
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   mmdoc:
 `)
@@ -275,7 +275,7 @@ repos:
 func TestResolveCDTarget_RejectsMixedSelectorForms(t *testing.T) {
 	active := activeRepoConfigs(t, `
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   mmdoc:
 `)
@@ -287,7 +287,7 @@ repos:
 func TestResolveCDTarget_ExactRepoWins(t *testing.T) {
 	active := activeRepoConfigs(t, `
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   mmdoc@docs:
 `)
@@ -408,6 +408,9 @@ func activeRepoConfigs(t *testing.T, yaml string) map[string]manifest.RepoConfig
 
 	if !strings.Contains(yaml, "\nroot:") && !strings.HasPrefix(strings.TrimSpace(yaml), "root:") {
 		yaml = "root: repos\n" + yaml
+	}
+	if !strings.Contains(yaml, "\nremotes:") && !strings.HasPrefix(strings.TrimSpace(yaml), "remotes:") {
+		yaml = "remotes:\n  origin: git@test:org\n" + yaml
 	}
 	m, err := manifest.Parse([]byte(yaml))
 	require.NoError(t, err)

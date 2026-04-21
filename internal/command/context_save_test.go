@@ -15,7 +15,7 @@ func TestSaveContextGroup_WritesManifest(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   existing: [repo-c]
 repos:
@@ -44,7 +44,7 @@ func TestSaveContextGroup_LocalCreatesManifestLocal(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -70,6 +70,9 @@ func TestSaveContextGroup_PreservesManifestWhitespace(t *testing.T) {
 	original := `# Header
 
 root: repos
+
+remotes:
+  origin: git@example.com:org
 
 groups:
   existing: [repo-c]
@@ -97,6 +100,9 @@ repos:
 
 root: repos
 
+remotes:
+  origin: git@example.com:org
+
 groups:
   existing: [repo-c]
   focus:
@@ -116,7 +122,7 @@ func TestSaveContextGroup_CollapsesWorktreesToBaseRepos(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo:
 `), 0644))
@@ -140,7 +146,7 @@ func TestSaveContextGroup_LocalPreservesWorktreeRefs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo:
 `), 0644))
@@ -164,7 +170,7 @@ func TestSaveContextGroup_RejectsLocalOnlyReposInSharedManifest(t *testing.T) {
 	m := loadManifestWithLocal(t, wsHome, `
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `, `
@@ -187,7 +193,7 @@ func TestSaveContextGroup_RejectsWhenNoContextIsSet(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `), 0644))
@@ -203,7 +209,7 @@ repos:
 func TestValidateContextGroupName_RejectsReservedActivityFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -227,7 +233,7 @@ func TestGroupWithWorktreeMembers_ResolvesCorrectly(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   feature-work: [repo@repo-feature]
 repos:
@@ -255,7 +261,7 @@ func TestGroupWithWorktreeMembers_SkipsMissingWorktree(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   stale: [repo@nonexistent]
 repos:
@@ -281,7 +287,7 @@ func TestGroupWithMixedMembers_ResolvesAll(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(`
 root: repos
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   feature: [api@api-feature, web]
 repos:
@@ -321,7 +327,7 @@ func TestPreserveContextMembers_RejectsUnknownRepos(t *testing.T) {
 func TestCompleteContextSuggestsSave(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -334,7 +340,7 @@ repos:
 func TestCompleteContextSaveSuggestsLocal(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)

@@ -120,7 +120,7 @@ cat > manifest.yml <<'EOF'
 root: ..
 
 remotes:
-  default: git@github.com:acme-corp
+  origin: git@github.com:acme-corp
 
 branch: main
 
@@ -154,7 +154,7 @@ Example `manifest.yml`:
 root: ..
 
 remotes:
-  default: git@github.com:acme-corp
+  origin: git@github.com:acme-corp
 
 branch: main
 workspace: ws.code-workspace
@@ -394,8 +394,7 @@ ls .scope
 root: ..
 
 remotes:
-  default: git@github.com:acme-corp
-  upstream: https://github.com/open-source-org
+  origin: git@github.com:acme-corp
 
 branch: main
 workspace: ws.code-workspace
@@ -410,8 +409,19 @@ repos:
   worker:
   web-app:
   admin-dashboard:
-  upstream-lib: { remote: upstream, branch: stable }
-  custom-tool: { url: git@custom.host:org/repo.git }
+
+  # Forked OSS repo — origin from the top-level prefix,
+  # upstream added as an extra remote pointing at the upstream fork.
+  upstream-lib:
+    branch: stable
+    remotes:
+      upstream: git@github.com:open-source-org/upstream-lib.git
+    default_compare: upstream
+
+  # Bespoke origin URL that doesn't match the prefix.
+  custom-tool:
+    remotes:
+      origin: git@custom.host:org/repo.git
 
 exclude:
   - legacy-api
@@ -419,7 +429,13 @@ exclude:
 
 Field summary:
 
-- `remotes`: named clone URL prefixes; `default` is the fallback
+- `remotes`: named clone URL prefixes at the top level. `/<repo>.git` is appended
+  when resolving a repo's URL. `origin` is the clone source and required for every
+  repo (either here as a prefix or as a per-repo full URL).
+- `repos.<name>.remotes`: per-repo map of extra git remotes. Values are full URLs
+  (used as-is). Merged with the top-level map; per-repo keys override.
+- `repos.<name>.default_compare`: name of the remote `ll` should compare against
+  (parsed today; full `ll` wiring lands in a follow-up).
 - `branch`: default branch for repos that do not override it
 - `root`: required; where repos live, relative to the manifest directory or absolute
 - `workspace`: filename for the generated VS Code workspace
@@ -428,6 +444,11 @@ Field summary:
 - `groups`: named repo sets used for filters
 - `repos`: active repos and per-repo overrides
 - `exclude`: catalog entries you do not want in normal operations
+
+Migrating from older manifests: the keys `repos.<name>.url` and
+`repos.<name>.remote` are removed — replace them with `repos.<name>.remotes.origin`.
+The top-level alias `remotes.default` is renamed to `remotes.origin`. See
+[UPGRADING.md](UPGRADING.md).
 
 Start from the full reference file at [manifest.reference.yml](manifest.reference.yml).
 
@@ -444,11 +465,11 @@ scopes:
 
 worktrees: true
 
-remotes:
-  my-fork: git@github.com:myuser
-
 repos:
-  my-experiment: { remote: my-fork, branch: dev }
+  my-experiment:
+    branch: dev
+    remotes:
+      origin: git@github.com:myuser/my-experiment.git
 
 exclude:
   - worker

@@ -141,13 +141,7 @@ dispatch:
 			if !ok {
 				fatal(fmt.Errorf("unknown repo: %s", name))
 			}
-			repo := manifest.RepoInfo{
-				Name:   name,
-				URL:    m.ResolveURL(name, cfg),
-				Branch: m.ResolveBranch(cfg),
-				Groups: m.RepoGroups()[name],
-				Path:   m.ResolvePath(wsHome, name, cfg),
-			}
+			repo := m.RepoInfoFor(wsHome, name, cfg, m.RepoGroups()[name])
 			path, err := command.CDPath(repo, selector)
 			if err != nil {
 				fatal(err)
@@ -262,12 +256,13 @@ dispatch:
 		}
 
 	case command.CommandFetch:
+		args, remoteNames := stripRepeatedValueFlag(args, "--remote")
 		defaultFilter, hasDefaultFilter := command.GetDefaultContextForMode(m, wsHome, false)
-		filter, err := parseOptionalFilterArg(args, defaultFilter, hasDefaultFilter, "ws fetch [filter]")
+		filter, err := parseOptionalFilterArg(args, defaultFilter, hasDefaultFilter, "ws fetch [--remote <name>] [filter]")
 		if err != nil {
 			fatal(err)
 		}
-		if err := command.Fetch(m, wsHome, filter); err != nil {
+		if err := command.Fetch(m, wsHome, filter, remoteNames); err != nil {
 			fatal(err)
 		}
 
@@ -342,6 +337,20 @@ dispatch:
 			if err := command.AgentUnpin(m, wsHome, parsed.IndexOrID); err != nil {
 				fatal(err)
 			}
+		}
+
+	case command.CommandRemotes:
+		if len(args) == 0 || args[0] != "sync" {
+			fatal(fmt.Errorf("usage: ws remotes sync [filter]"))
+		}
+		args = args[1:]
+		defaultFilter, hasDefaultFilter := command.GetDefaultContextForMode(m, wsHome, false)
+		filter, err := parseOptionalFilterArg(args, defaultFilter, hasDefaultFilter, "ws remotes sync [filter]")
+		if err != nil {
+			fatal(err)
+		}
+		if err := command.RemotesSync(m, wsHome, filter); err != nil {
+			fatal(err)
 		}
 
 	case command.CommandWorktree:

@@ -10,7 +10,7 @@ import (
 func TestParseSuperArgs_WithGroup(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -27,7 +27,7 @@ repos:
 func TestParseSuperArgs_WithoutGroup(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -42,7 +42,7 @@ repos:
 func TestParseSuperArgs_WorktreesBeforeFilter(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -60,7 +60,7 @@ repos:
 func TestParseSuperArgs_ShorthandWorktreesBeforeFilter(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -78,7 +78,7 @@ repos:
 func TestParseSuperArgs_WorktreesAfterFilter(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -96,7 +96,7 @@ repos:
 func TestParseSuperArgs_NoWorktreesAfterFilter(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -114,7 +114,7 @@ repos:
 func TestParseSuperArgs_Empty(t *testing.T) {
 	m, _ := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -128,7 +128,7 @@ repos:
 func TestParseSuperArgs_AllFilter(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:

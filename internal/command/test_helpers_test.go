@@ -34,10 +34,20 @@ func runGitEnv(t *testing.T, dir string, env []string, args ...string) {
 }
 
 func parseManifestYAML(yaml string) (*manifest.Manifest, error) {
+	yaml = injectTestDefaults(yaml)
+	return manifest.Parse([]byte(yaml))
+}
+
+// injectTestDefaults ensures test YAML fragments parse under the post-multi-remote
+// validation: adds `root:` and a `remotes.origin` prefix if missing.
+func injectTestDefaults(yaml string) string {
 	if !strings.Contains(yaml, "\nroot:") && !strings.HasPrefix(strings.TrimSpace(yaml), "root:") {
 		yaml = "root: repos\n" + yaml
 	}
-	return manifest.Parse([]byte(yaml))
+	if !strings.Contains(yaml, "\nremotes:") && !strings.HasPrefix(strings.TrimSpace(yaml), "remotes:") {
+		yaml = "remotes:\n  origin: git@test:org\n" + yaml
+	}
+	return yaml
 }
 
 func readStoredContext(t *testing.T, wsHome string) contextState {
@@ -54,7 +64,7 @@ func readStoredContext(t *testing.T, wsHome string) contextState {
 func loadManifestWithLocal(t *testing.T, wsHome, manifestYAML, localYAML string) *manifest.Manifest {
 	t.Helper()
 
-	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(manifestYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.yml"), []byte(injectTestDefaults(manifestYAML)), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(wsHome, "manifest.local.yml"), []byte(localYAML), 0644))
 
 	m, err := manifest.LoadWithLocal(wsHome)

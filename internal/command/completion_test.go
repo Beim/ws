@@ -10,7 +10,7 @@ import (
 func TestCompleteTopLevel(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -47,7 +47,7 @@ func TestCompleteTopLevelFallsBackToCommands(t *testing.T) {
 func TestCompleteCDRepos(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
   repo-b:
@@ -61,7 +61,7 @@ repos:
 func TestCompleteCDIncludesWorktreeSelectorFlags(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -75,7 +75,7 @@ repos:
 func TestCompleteSetupIncludesFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -97,7 +97,7 @@ func TestCompleteShellIncludesSubcommands(t *testing.T) {
 func TestCompleteLLIncludesWorktreesFlagAndFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -117,7 +117,7 @@ repos:
 func TestCompleteReposIncludesWorktreesFlagAndShowAll(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -134,7 +134,7 @@ repos:
 func TestCompleteDirsIncludesFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   backend: [repo-a]
 repos:
@@ -155,7 +155,7 @@ repos:
 func TestCompletePassthroughAfterWorktreesFallsBackToCommands(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -170,7 +170,7 @@ repos:
 func TestCompletePassthroughAfterNoWorktreesFallsBackToCommands(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -185,7 +185,7 @@ repos:
 func TestCompletePassthroughAfterShorthandWorktreesFallsBackToCommands(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -200,7 +200,7 @@ repos:
 func TestCompleteContextIncludesReset(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -224,7 +224,7 @@ repos:
 func TestCompleteContextAliasIncludesContextSuggestions(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -241,7 +241,7 @@ repos:
 func TestCompleteContextAfterWorktreesFlagIncludesFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -258,7 +258,7 @@ repos:
 func TestCompleteContextAddSuggestsFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -277,7 +277,7 @@ repos:
 func TestCompleteContextRefreshDoesNotSuggestFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -297,7 +297,7 @@ repos:
 func TestCompleteContextRemoveSuggestsFilters(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -316,7 +316,7 @@ repos:
 func TestCompleteGroupCommandFallsBackToCommands(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -331,7 +331,7 @@ repos:
 func TestCompleteGroupCommandDelegatesAfterCommandWord(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:
@@ -347,7 +347,7 @@ repos:
 func TestCompletePassthroughDelegatesAfterCommandWord(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 repos:
   repo-a:
 `)
@@ -361,7 +361,7 @@ repos:
 func TestCompleteEscapedPassthroughDelegatesAfterCommandWord(t *testing.T) {
 	m, err := parseManifestYAML(`
 remotes:
-  default: git@example.com
+  origin: git@example.com:org
 groups:
   ai: [repo-a]
 repos:

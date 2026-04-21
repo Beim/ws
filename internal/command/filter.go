@@ -324,13 +324,7 @@ func matchesActivityFilter(spec activityFilterSpec, state git.RepoActivity) bool
 }
 
 func baseRepoInfo(m *manifest.Manifest, wsHome, name string, cfg manifest.RepoConfig, groups []string) manifest.RepoInfo {
-	return manifest.RepoInfo{
-		Name:   name,
-		URL:    m.ResolveURL(name, cfg),
-		Branch: m.ResolveBranch(cfg),
-		Groups: groups,
-		Path:   m.ResolvePath(wsHome, name, cfg),
-	}
+	return m.RepoInfoFor(wsHome, name, cfg, groups)
 }
 
 // resolveWorktreeBranch finds all worktrees across active repos that are on
@@ -354,12 +348,14 @@ func resolveWorktreeBranch(m *manifest.Manifest, wsHome, branch string) ([]manif
 			}
 			if target.Branch == branch {
 				matched = append(matched, manifest.RepoInfo{
-					Name:     target.Name,
-					URL:      set.Repo.URL,
-					Branch:   target.Branch,
-					Groups:   set.Repo.Groups,
-					Path:     target.Path,
-					Worktree: worktreeDisplayName(set.Repo.Name, target.Name),
+					Name:           target.Name,
+					URL:            set.Repo.URL,
+					Branch:         target.Branch,
+					Groups:         set.Repo.Groups,
+					Path:           target.Path,
+					Worktree:       worktreeDisplayName(set.Repo.Name, target.Name),
+					Remotes:        set.Repo.Remotes,
+					DefaultCompare: set.Repo.DefaultCompare,
 				})
 			}
 		}
@@ -434,12 +430,14 @@ func expandReposToWorktreeSets(repos []manifest.RepoInfo) []worktreeExpansion {
 				worktreeName = worktreeDisplayName(set.Repo.Name, target.Name)
 			}
 			reposForBase = append(reposForBase, manifest.RepoInfo{
-				Name:     target.Name,
-				URL:      set.Repo.URL,
-				Branch:   target.Branch,
-				Groups:   set.Repo.Groups,
-				Path:     target.Path,
-				Worktree: worktreeName,
+				Name:           target.Name,
+				URL:            set.Repo.URL,
+				Branch:         target.Branch,
+				Groups:         set.Repo.Groups,
+				Path:           target.Path,
+				Worktree:       worktreeName,
+				Remotes:        set.Repo.Remotes,
+				DefaultCompare: set.Repo.DefaultCompare,
 			})
 		}
 		expanded = append(expanded, worktreeExpansion{

@@ -3,7 +3,7 @@
 # Run: cd example && ws setup
 
 remotes:
-  default: https://github.com/charmbracelet
+  origin: https://github.com/charmbracelet
 
 branch: main
 root: repos

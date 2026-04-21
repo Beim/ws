@@ -9,6 +9,32 @@ import (
 	"github.com/dtuit/ws/internal/manifest"
 )
 
+// stripRepeatedValueFlag extracts every occurrence of `<name> <value>` and
+// `<name>=<value>` from args, returning the remaining args and the collected
+// values in order. Unknown trailing `<name>` with no value is treated as a
+// fatal-in-caller error (we keep parsing lenient here and let the caller
+// surface the usage string).
+func stripRepeatedValueFlag(args []string, name string) ([]string, []string) {
+	var values []string
+	rest := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == name {
+			if i+1 < len(args) {
+				values = append(values, args[i+1])
+				i++
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, name+"=") {
+			values = append(values, strings.TrimPrefix(arg, name+"="))
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	return rest, values
+}
+
 func stripBoolFlag(args []string, names ...string) ([]string, bool) {
 	if len(args) == 0 {
 		return args, false

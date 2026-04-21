@@ -407,12 +407,39 @@ func Exec(repos []manifest.RepoInfo, cmdArgs []string, maxWorkers int) int {
 	})
 }
 
-// Clone clones a single repo.
+// RemoteURL returns the configured URL for the given remote, or an error if
+// the remote is not configured. Thin wrapper around `git remote get-url`.
+func RemoteURL(repoDir, name string) (string, error) {
+	return gitCmd(repoDir, "remote", "get-url", name)
+}
+
+// AddRemote runs `git remote add <name> <url>` in the repo directory.
+func AddRemote(repoDir, name, url string) error {
+	_, err := gitCmd(repoDir, "remote", "add", name, url)
+	return err
+}
+
+// Clone clones a single repo and configures any additional (non-origin)
+// remotes declared on the repo.
 func Clone(repo manifest.RepoInfo) error {
 	cmd := exec.Command("git", "clone", "-b", repo.Branch, "--single-branch", "--", repo.URL, repo.Path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	for name, url := range repo.Remotes {
+		if name == "origin" {
+			continue
+		}
+		add := exec.Command("git", "-C", repo.Path, "remote", "add", name, url)
+		add.Stdout = os.Stdout
+		add.Stderr = os.Stderr
+		if err := add.Run(); err != nil {
+			return fmt.Errorf("add remote %s: %w", name, err)
+		}
+	}
+	return nil
 }
 
 func inspectCheckoutActivity(repoDir string, recentWindow time.Duration) (bool, bool, error) {
