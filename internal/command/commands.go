@@ -361,7 +361,7 @@ after a repo was already cloned.
 		Summary:     HelpEntry{Usage: "[subcommand]", Description: "AI agent sessions (start/list/resume)"},
 		Help: []HelpEntry{
 			{Usage: "agent [--agent name] [repo] [-- args...]", Description: "Start an AI agent session"},
-			{Usage: "agent list [-v] [-n N | --all] [filter]", Description: "List agent sessions (alias: ls)"},
+			{Usage: "agent list [-v] [-l|-r] [-n N | --all] [filter]", Description: "List agent sessions (alias: ls)"},
 			{Usage: "agent resume <#|id>", Description: "Resume a previous agent session"},
 			{Usage: "agent pin [<#|id>]", Description: "Pin a session (no arg = current)"},
 			{Usage: "agent unpin [<#|id>]", Description: "Unpin a session (no arg = current)"},
@@ -372,7 +372,8 @@ Start, list, and resume AI agent sessions across workspace repos.
 
 Subcommands:
   (default)                          Start an agent session
-  list|ls [-v] [-n N|--all] [filter] List sessions
+  list|ls [-v] [-l|-r] [-n N|--all] [filter]
+                                     List sessions
   resume <#|id>                      Resume a previous session
   pin [<#|id>]                       Pin a session (no arg = current)
   unpin [<#|id>]                     Unpin a session (no arg = current)
@@ -384,6 +385,8 @@ Start options:
 
 List options:
   -v, --verbose        Show recap, full prompts, and last message
+  -l, --last           Show last user prompt instead of first (compact view)
+  -r, --recap          Show recap, falling back to last/first (compact view)
   -n <N>               Limit output to N sessions (default: 20)
   --all                Show all sessions
   [filter]             Filter by group or repo name
@@ -399,7 +402,7 @@ Resume / pin / unpin:
 
 Pinned sessions sort to the top of ` + "`ws agent ls`" + ` (marked P) and are
 kept visible even when the output is limited by -n. Pins are stored in
-` + "`.ws-agent-pins`" + ` at the workspace root.
+` + "`.ws/agent-pins.yml`" + ` at the workspace root.
 
 Agent profiles are configured in manifest (typically manifest.local.yml):
 

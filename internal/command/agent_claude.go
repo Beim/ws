@@ -22,6 +22,7 @@ type claudeSessionMeta struct {
 	PID       int    `json:"pid"`
 	SessionID string `json:"sessionId"`
 	Name      string `json:"name"`
+	UpdatedAt int64  `json:"updatedAt"` // milliseconds
 }
 
 // discoverClaudeSessions reads ~/.claude/history.jsonl and returns sessions
@@ -133,27 +134,31 @@ func discoverClaudeSessions(pathIndex map[string]string, external bool) []AgentS
 		})
 	}
 
-	// Enrich with active-process information from session metadata files
-	enrichClaudeActiveSessions(sessions, home)
+	// Enrich with active-process information and names from session metadata
+	enrichClaudeSessionMetadata(sessions, home)
 
 	return sessions
 }
 
-// enrichClaudeActiveSessions checks ~/.claude/sessions/*.json to mark
-// sessions that are currently running (PID is alive).
-func enrichClaudeActiveSessions(sessions []AgentSession, home string) {
+// enrichClaudeSessionMetadata scans ~/.claude/sessions/*.json to mark
+// sessions that are currently running (PID is alive) and to populate
+// user-set session names (from the /rename command). The name lives in
+// the metadata file; when multiple files exist for one session ID, the
+// most recently updated one wins.
+func enrichClaudeSessionMetadata(sessions []AgentSession, home string) {
 	sessionsDir := filepath.Join(home, ".claude", "sessions")
 	entries, err := os.ReadDir(sessionsDir)
 	if err != nil {
 		return
 	}
 
-	// Build a map of sessionId → live PIDs from the metadata files
-	type liveMeta struct {
-		pid  int
-		name string
+	liveSessionIDs := make(map[string]bool)
+
+	type nameEntry struct {
+		name      string
+		updatedAt int64
 	}
-	liveBySessionID := make(map[string]liveMeta)
+	namesBySessionID := make(map[string]nameEntry)
 
 	for _, entry := range entries {
 		if !strings.HasSuffix(entry.Name(), ".json") {
@@ -171,17 +176,23 @@ func enrichClaudeActiveSessions(sessions []AgentSession, home string) {
 		}
 
 		if meta.PID > 0 && isProcessAlive(meta.PID) {
-			liveBySessionID[meta.SessionID] = liveMeta{pid: meta.PID, name: meta.Name}
+			liveSessionIDs[meta.SessionID] = true
+		}
+
+		// Keep the most recently updated record per session ID so that a
+		// subsequent /rename (or clear) wins over older files.
+		prev, seen := namesBySessionID[meta.SessionID]
+		if !seen || meta.UpdatedAt > prev.updatedAt {
+			namesBySessionID[meta.SessionID] = nameEntry{name: meta.Name, updatedAt: meta.UpdatedAt}
 		}
 	}
 
-	if len(liveBySessionID) == 0 {
-		return
-	}
-
 	for i := range sessions {
-		if _, ok := liveBySessionID[sessions[i].SessionID]; ok {
+		if liveSessionIDs[sessions[i].SessionID] {
 			sessions[i].Active = true
+		}
+		if entry, ok := namesBySessionID[sessions[i].SessionID]; ok && entry.name != "" {
+			sessions[i].Name = entry.name
 		}
 	}
 }

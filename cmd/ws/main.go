@@ -321,7 +321,11 @@ dispatch:
 			if limit == 0 && !parsed.ShowAll {
 				limit = command.AgentDefaultLimit
 			}
-			mode := command.AgentListMode{Verbose: parsed.Verbose}
+			mode := command.AgentListMode{
+				Verbose:   parsed.Verbose,
+				ShowLast:  parsed.ShowLast,
+				ShowRecap: parsed.ShowRecap,
+			}
 			if err := command.AgentList(m, wsHome, parsed.Filter, false, limit, mode); err != nil {
 				fatal(err)
 			}

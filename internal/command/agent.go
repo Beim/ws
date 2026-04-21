@@ -28,6 +28,7 @@ type AgentSession struct {
 	Summary           string   // away_summary / recap (if available)
 	LastPrompt        string   // most recent user message (if available)
 	Model             string   // model used (optional)
+	Name              string   // user-set session name (e.g., Claude /rename)
 	Active            bool     // true if the agent process is still running
 	BypassPermissions bool     // session was launched with permission bypass (e.g., --dangerously-skip-permissions)
 	Pinned            bool     // session is pinned in the workspace pins file
@@ -47,7 +48,15 @@ const (
 
 // AgentListMode controls optional agent list output extensions.
 type AgentListMode struct {
-	Verbose bool
+	Verbose   bool
+	ShowLast  bool // compact view: show last user prompt instead of first
+	ShowRecap bool // compact view: show recap, falling back to last/first
+}
+
+// needsEnrichment reports whether the mode requires reading conversation
+// details (Summary/LastPrompt) beyond what discovery already collects.
+func (m AgentListMode) needsEnrichment() bool {
+	return m.Verbose || m.ShowLast || m.ShowRecap
 }
 
 // AgentList discovers and prints agent sessions across the workspace.
@@ -85,7 +94,7 @@ func AgentList(m *manifest.Manifest, wsHome, filter string, includeWorktrees boo
 		sessions = truncatePreservingPins(sessions, limit)
 	}
 
-	if mode.Verbose {
+	if mode.needsEnrichment() {
 		enrichSessionVerboseInfo(sessions)
 	}
 
@@ -409,11 +418,8 @@ func externalRepoLabel(dir string) string {
 }
 
 // applyAgentPins marks sessions with the Pinned flag and sorts pinned
-// sessions first (preserving the existing LastActive order within each group).
+// sessions first, preserving the caller's original order within each group.
 func applyAgentPins(sessions []AgentSession, pins map[string]bool) []AgentSession {
-	if len(pins) == 0 {
-		return sessions
-	}
 	for i := range sessions {
 		if pins[sessions[i].SessionID] {
 			sessions[i].Pinned = true
@@ -553,15 +559,16 @@ func printAgentSessions(sessions []AgentSession, mode AgentListMode) {
 	if mode.Verbose {
 		printAgentSessionsVerbose(sessions, now, termWidth, maxRepo, idxWidth)
 	} else {
-		printAgentSessionsCompact(sessions, now, termWidth, maxRepo, idxWidth)
+		printAgentSessionsCompact(sessions, now, termWidth, maxRepo, idxWidth, mode)
 	}
 
 	fmt.Printf("\n%s\n", term.Colorize(term.Dim, "Resume: ws agent resume <#>"))
 }
 
-func printAgentSessionsCompact(sessions []AgentSession, now time.Time, termWidth, maxRepo, idxWidth int) {
+func printAgentSessionsCompact(sessions []AgentSession, now time.Time, termWidth, maxRepo, idxWidth int, mode AgentListMode) {
+	header := compactHeaderLabel(mode)
 	fmt.Printf("%*s  %-8s %-*s  %-12s %s\n",
-		idxWidth, "#", "AGENT", maxRepo, "REPO", "WHEN", "PROMPT")
+		idxWidth, "#", "AGENT", maxRepo, "REPO", "WHEN", header)
 	fmt.Println(strings.Repeat("-", 60+maxRepo))
 
 	for i, s := range sessions {
@@ -585,7 +592,24 @@ func printAgentSessionsCompact(sessions []AgentSession, now time.Time, termWidth
 				promptWidth = 20
 			}
 		}
-		prompt := truncateText(s.Prompt, promptWidth)
+
+		var namePrefix string
+		textWidth := promptWidth
+		if s.Name != "" {
+			nameTag := "[" + s.Name + "]"
+			// Keep at least some room for the prompt text even when the
+			// name is long.
+			nameBudget := promptWidth - 6
+			if nameBudget < len(nameTag) {
+				nameTag = truncateText(nameTag, nameBudget)
+			}
+			namePrefix = term.Colorize(term.Cyan, nameTag) + " "
+			textWidth = promptWidth - utf8.RuneCountInString(nameTag) - 1
+			if textWidth < 0 {
+				textWidth = 0
+			}
+		}
+		prompt := namePrefix + truncateText(selectCompactText(s, mode), textWidth)
 
 		fmt.Printf("%*d  %s %-*s %s%-12s %s\n",
 			idxWidth, i+1,
@@ -595,6 +619,39 @@ func printAgentSessionsCompact(sessions []AgentSession, now time.Time, termWidth
 			term.Colorize(term.Dim, when),
 			prompt,
 		)
+	}
+}
+
+// selectCompactText picks the text shown in the compact PROMPT column
+// based on the list mode, falling back through recap → last → first when
+// the preferred source is empty.
+func selectCompactText(s AgentSession, mode AgentListMode) string {
+	if mode.ShowRecap {
+		if t := cleanPromptText(s.Summary); t != "" {
+			return t
+		}
+		if t := cleanPromptText(s.LastPrompt); t != "" {
+			return t
+		}
+		return s.Prompt
+	}
+	if mode.ShowLast {
+		if t := cleanPromptText(s.LastPrompt); t != "" {
+			return t
+		}
+		return s.Prompt
+	}
+	return s.Prompt
+}
+
+func compactHeaderLabel(mode AgentListMode) string {
+	switch {
+	case mode.ShowRecap:
+		return "RECAP"
+	case mode.ShowLast:
+		return "LAST"
+	default:
+		return "PROMPT"
 	}
 }
 
@@ -620,14 +677,23 @@ func printAgentSessionsVerbose(sessions []AgentSession, now time.Time, termWidth
 
 		when := formatTimeAgo(now, s.LastActive)
 
-		// Header line: index, agent, repo, when
-		fmt.Printf("%*d  %s  %s  %s%s\n",
+		nameLabel := ""
+		if s.Name != "" {
+			nameLabel = "  " + term.Colorize(term.Cyan, "["+s.Name+"]")
+		}
+
+		// Header line: index, agent, repo, name, when
+		fmt.Printf("%*d  %s  %s%s  %s%s\n",
 			idxWidth, i+1,
 			term.Colorize(agentTypeColor(s.Agent), s.Agent),
 			s.Repo,
+			nameLabel,
 			term.Colorize(term.Dim, when),
 			markers,
 		)
+
+		lastText := cleanPromptText(s.LastPrompt)
+		lastShownInline := false
 
 		// Summary (recap) if available — most useful context
 		if s.Summary != "" {
@@ -649,20 +715,22 @@ func printAgentSessionsVerbose(sessions []AgentSession, now time.Time, termWidth
 				for _, line := range wrapText(promptText, wrapWidth) {
 					fmt.Printf("%s%s\n", indent, line)
 				}
+				if lastText != "" && promptText == lastText {
+					fmt.Printf("%s%s\n", indent, term.Colorize(term.Dim, "(last)"))
+					lastShownInline = true
+				}
 				if j < len(prompts)-1 {
 					fmt.Printf("%s%s\n", indent, term.Colorize(term.Dim, "---"))
 				}
 			}
 		}
 
-		// Last prompt if different from the initial prompt
-		if s.LastPrompt != "" && s.LastPrompt != s.Prompt {
-			lastText := cleanPromptText(s.LastPrompt)
-			if lastText != "" {
-				fmt.Printf("%s%s\n", indent, term.Colorize(term.Dim, "Last:"))
-				for _, line := range wrapText(lastText, wrapWidth) {
-					fmt.Printf("%s%s\n", indent, line)
-				}
+		// Fall back to a separate block only when LastPrompt didn't match
+		// any prompt we already rendered inline (and isn't the summary).
+		if lastText != "" && !lastShownInline && cleanPromptText(s.Summary) != lastText {
+			fmt.Printf("%s%s\n", indent, term.Colorize(term.Dim, "Last:"))
+			for _, line := range wrapText(lastText, wrapWidth) {
+				fmt.Printf("%s%s\n", indent, line)
 			}
 		}
 

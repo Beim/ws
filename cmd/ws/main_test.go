@@ -383,6 +383,33 @@ func TestParseAgentArgs_LSAll(t *testing.T) {
 	assert.True(t, parsed.ShowAll)
 }
 
+func TestParseAgentArgs_LSLast(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"ls", "--last"})
+	require.NoError(t, err)
+	assert.True(t, parsed.ShowLast)
+	assert.False(t, parsed.ShowRecap)
+
+	parsed, err = parseAgentArgs([]string{"ls", "-l"})
+	require.NoError(t, err)
+	assert.True(t, parsed.ShowLast)
+}
+
+func TestParseAgentArgs_LSRecap(t *testing.T) {
+	parsed, err := parseAgentArgs([]string{"ls", "--recap"})
+	require.NoError(t, err)
+	assert.True(t, parsed.ShowRecap)
+	assert.False(t, parsed.ShowLast)
+
+	parsed, err = parseAgentArgs([]string{"ls", "-r"})
+	require.NoError(t, err)
+	assert.True(t, parsed.ShowRecap)
+}
+
+func TestParseAgentArgs_LSLastRecapMutuallyExclusive(t *testing.T) {
+	_, err := parseAgentArgs([]string{"ls", "--last", "--recap"})
+	require.Error(t, err)
+}
+
 func TestParseAgentArgs_Resume(t *testing.T) {
 	parsed, err := parseAgentArgs([]string{"resume", "3"})
 	require.NoError(t, err)

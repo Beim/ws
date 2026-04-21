@@ -255,6 +255,8 @@ type agentArgs struct {
 	Limit       int      // for ls: max sessions (0 = default)
 	ShowAll     bool     // for ls: show all sessions
 	Verbose     bool     // for ls: show full prompt text
+	ShowLast    bool     // for ls: compact view shows last user prompt
+	ShowRecap   bool     // for ls: compact view shows recap (fallback last/first)
 	Passthrough []string // args after -- to pass to the agent CLI
 }
 
@@ -329,6 +331,10 @@ func parseAgentLSArgs(args []string) (agentArgs, error) {
 			parsed.ShowAll = true
 		case "-v", "--verbose":
 			parsed.Verbose = true
+		case "-l", "--last":
+			parsed.ShowLast = true
+		case "-r", "--recap":
+			parsed.ShowRecap = true
 		case "-n":
 			if i+1 >= len(args) {
 				return agentArgs{}, fmt.Errorf("-n requires a number")
@@ -344,10 +350,13 @@ func parseAgentLSArgs(args []string) (agentArgs, error) {
 				return agentArgs{}, fmt.Errorf("unknown flag: %s", args[i])
 			}
 			if parsed.Filter != "" {
-				return agentArgs{}, fmt.Errorf("usage: ws agent ls [-v] [-n N | --all] [filter]")
+				return agentArgs{}, fmt.Errorf("usage: ws agent ls [-v] [-l|-r] [-n N | --all] [filter]")
 			}
 			parsed.Filter = args[i]
 		}
+	}
+	if parsed.ShowLast && parsed.ShowRecap {
+		return agentArgs{}, fmt.Errorf("--last and --recap are mutually exclusive")
 	}
 	return parsed, nil
 }

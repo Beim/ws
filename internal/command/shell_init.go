@@ -6,22 +6,44 @@ const CompletionCommandFallbackSentinel = "__ws_complete_commands__"
 
 // ShellInitScript returns the shell integration and completion script for ws.
 func ShellInitScript() string {
-	return fmt.Sprintf(`ws() {
+	return fmt.Sprintf(`_ws_wants_help() {
+  # Returns 0 if any arg is -h / --help / help (so output is not a dir+cmd pair).
+  local a
+  for a in "$@"; do
+    case "$a" in
+      -h|--help|help) return 0 ;;
+    esac
+  done
+  return 1
+}
+ws() {
   case "$1" in
     cd)
+      if _ws_wants_help "${@:2}"; then
+        command ws "$@"
+        return
+      fi
       local dir
       dir="$(command ws cd "${@:2}")" && cd "$dir"
       ;;
     agent)
-      if [ "$2" = "ls" ] || [ "$2" = "list" ]; then
+      # Subcommands that don't follow the dir+cmd stdout protocol pass through.
+      if _ws_wants_help "${@:2}"; then
         command ws "$@"
-      else
-        local _ws_agent_info _ws_agent_dir _ws_agent_cmd
-        _ws_agent_info="$(command ws agent "${@:2}")"
-        _ws_agent_dir="$(printf '%%s\n' "$_ws_agent_info" | head -1)"
-        _ws_agent_cmd="$(printf '%%s\n' "$_ws_agent_info" | tail -n +2)"
-        cd "$_ws_agent_dir" && eval "$_ws_agent_cmd"
+        return
       fi
+      case "$2" in
+        ls|list|pin|unpin)
+          command ws "$@"
+          ;;
+        *)
+          local _ws_agent_info _ws_agent_dir _ws_agent_cmd
+          _ws_agent_info="$(command ws agent "${@:2}")"
+          _ws_agent_dir="$(printf '%%s\n' "$_ws_agent_info" | head -1)"
+          _ws_agent_cmd="$(printf '%%s\n' "$_ws_agent_info" | tail -n +2)"
+          cd "$_ws_agent_dir" && eval "$_ws_agent_cmd"
+          ;;
+      esac
       ;;
     *)
       command ws "$@"

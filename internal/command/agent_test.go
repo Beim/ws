@@ -1,6 +1,7 @@
 package command
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -118,6 +119,78 @@ func TestShellJoin(t *testing.T) {
 	assert.Equal(t, "--resume abc123", shellJoin([]string{"--resume", "abc123"}))
 	assert.Equal(t, "'hello world'", shellJoin([]string{"hello world"}))
 	assert.Equal(t, "'it'\\''s'", shellJoin([]string{"it's"}))
+}
+
+func TestEnrichClaudeSessionMetadata_LatestNameWins(t *testing.T) {
+	home := t.TempDir()
+	sessionsDir := filepath.Join(home, ".claude", "sessions")
+	require.NoError(t, os.MkdirAll(sessionsDir, 0o755))
+
+	// Two metadata files for the same session ID: the newer updatedAt
+	// should supply the name, even when that name is set and the older
+	// one was unnamed.
+	oldFile := `{"pid":1,"sessionId":"sess-1","updatedAt":1000}`
+	newFile := `{"pid":2,"sessionId":"sess-1","name":"hotfix","updatedAt":2000}`
+	require.NoError(t, os.WriteFile(filepath.Join(sessionsDir, "1.json"), []byte(oldFile), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sessionsDir, "2.json"), []byte(newFile), 0o644))
+
+	// A separate session whose latest record cleared the name.
+	clearedOld := `{"pid":3,"sessionId":"sess-2","name":"stale","updatedAt":500}`
+	clearedNew := `{"pid":4,"sessionId":"sess-2","updatedAt":600}`
+	require.NoError(t, os.WriteFile(filepath.Join(sessionsDir, "3.json"), []byte(clearedOld), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sessionsDir, "4.json"), []byte(clearedNew), 0o644))
+
+	sessions := []AgentSession{
+		{SessionID: "sess-1"},
+		{SessionID: "sess-2"},
+		{SessionID: "missing"},
+	}
+	enrichClaudeSessionMetadata(sessions, home)
+
+	assert.Equal(t, "hotfix", sessions[0].Name)
+	assert.Equal(t, "", sessions[1].Name, "latest record with empty name should clear")
+	assert.Equal(t, "", sessions[2].Name)
+}
+
+func TestEnrichClaudeSessionMetadata_IgnoresBadFiles(t *testing.T) {
+	home := t.TempDir()
+	sessionsDir := filepath.Join(home, ".claude", "sessions")
+	require.NoError(t, os.MkdirAll(sessionsDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(sessionsDir, "garbage.json"), []byte("not json"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sessionsDir, "empty-sid.json"),
+		[]byte(`{"pid":0,"sessionId":"","name":"ignored"}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sessionsDir, "good.json"),
+		[]byte(fmt.Sprintf(`{"pid":0,"sessionId":"sess-x","name":"keep","updatedAt":1}`)), 0o644))
+
+	sessions := []AgentSession{{SessionID: "sess-x"}}
+	enrichClaudeSessionMetadata(sessions, home)
+	assert.Equal(t, "keep", sessions[0].Name)
+}
+
+func TestSelectCompactText(t *testing.T) {
+	full := AgentSession{Prompt: "first", LastPrompt: "last", Summary: "recap"}
+	onlyFirst := AgentSession{Prompt: "first"}
+	firstAndLast := AgentSession{Prompt: "first", LastPrompt: "last"}
+
+	// Default: first
+	assert.Equal(t, "first", selectCompactText(full, AgentListMode{}))
+
+	// ShowLast: last, fall back to first when last is empty
+	assert.Equal(t, "last", selectCompactText(full, AgentListMode{ShowLast: true}))
+	assert.Equal(t, "first", selectCompactText(onlyFirst, AgentListMode{ShowLast: true}))
+
+	// ShowRecap: recap, fall back to last, then first
+	assert.Equal(t, "recap", selectCompactText(full, AgentListMode{ShowRecap: true}))
+	assert.Equal(t, "last", selectCompactText(firstAndLast, AgentListMode{ShowRecap: true}))
+	assert.Equal(t, "first", selectCompactText(onlyFirst, AgentListMode{ShowRecap: true}))
+}
+
+func TestAgentListModeNeedsEnrichment(t *testing.T) {
+	assert.False(t, AgentListMode{}.needsEnrichment())
+	assert.True(t, AgentListMode{Verbose: true}.needsEnrichment())
+	assert.True(t, AgentListMode{ShowLast: true}.needsEnrichment())
+	assert.True(t, AgentListMode{ShowRecap: true}.needsEnrichment())
 }
 
 func TestResolveSessionRef_ByIndex(t *testing.T) {
@@ -410,8 +483,41 @@ func TestAgentPinsRoundTrip(t *testing.T) {
 	assert.False(t, removed)
 
 	// File should be cleaned up when no pins remain.
-	_, err = os.Stat(filepath.Join(dir, agentPinsFile))
+	_, err = os.Stat(filepath.Join(dir, wsStateDir, agentPinsStateFile))
 	assert.True(t, os.IsNotExist(err), "pins file should be removed when empty")
+	_, err = os.Stat(filepath.Join(dir, legacyAgentPinsFile))
+	assert.True(t, os.IsNotExist(err), "legacy pins file should not exist")
+}
+
+func TestAgentPinsMigratesLegacyFileOnWrite(t *testing.T) {
+	dir := t.TempDir()
+
+	// Seed a legacy flat pins file from a prior ws version.
+	legacyPath := filepath.Join(dir, legacyAgentPinsFile)
+	require.NoError(t, os.WriteFile(legacyPath, []byte("pins:\n  - legacy-id\n"), 0644))
+
+	// Read path should fall back to the legacy file.
+	pins, err := loadAgentPins(dir)
+	require.NoError(t, err)
+	assert.True(t, pins["legacy-id"])
+
+	// Adding a new pin writes to the nested path and removes the legacy file.
+	added, err := addAgentPin(dir, "new-id")
+	require.NoError(t, err)
+	assert.True(t, added)
+
+	_, err = os.Stat(legacyPath)
+	assert.True(t, os.IsNotExist(err), "legacy flat file should be migrated away")
+
+	newPath := filepath.Join(dir, wsStateDir, agentPinsStateFile)
+	_, err = os.Stat(newPath)
+	require.NoError(t, err, "new nested pins file should exist after write")
+
+	// Re-reading should see both the migrated legacy pin and the new one.
+	pins, err = loadAgentPins(dir)
+	require.NoError(t, err)
+	assert.True(t, pins["legacy-id"])
+	assert.True(t, pins["new-id"])
 }
 
 func TestApplyAgentPinsSortsPinnedFirst(t *testing.T) {
