@@ -230,7 +230,7 @@ repos:
 `)
 	require.NoError(t, err)
 
-	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "repo-a,repo-b", []manifest.RepoInfo{
+	require.NoError(t, saveStoredContextState(wsHome, "repo-a,repo-b", []manifest.RepoInfo{
 		{Name: "repo-a"},
 		{Name: "repo-b"},
 	}, nil))
@@ -833,7 +833,8 @@ repos:
 `)
 	require.NoError(t, err)
 
-	require.NoError(t, os.WriteFile(filepath.Join(wsHome, contextFile), []byte(`
+	require.NoError(t, os.MkdirAll(filepath.Join(wsHome, wsStateDir), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(wsHome, wsStateDir, contextStateFile), []byte(`
 raw: repo,repo@repo-feature,other
 resolved:
   - repo
@@ -958,4 +959,37 @@ repos:
 	assert.Equal(t, "", state.Raw)
 	require.NotNil(t, state.Previous)
 	assert.Equal(t, "backend", *state.Previous)
+}
+
+func TestContextStateMigratesLegacyFileOnWrite(t *testing.T) {
+	wsHome := t.TempDir()
+
+	// Seed a legacy flat context file from a prior ws version.
+	legacyPath := filepath.Join(wsHome, legacyContextFile)
+	require.NoError(t, os.WriteFile(legacyPath, []byte(`
+raw: legacy
+resolved:
+  - repo-a
+`), 0644))
+
+	// Load should read from the legacy path.
+	state, ok, err := loadStoredContextState(wsHome)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "legacy", state.Raw)
+
+	// Save migrates: legacy flat file is removed, new nested file exists.
+	require.NoError(t, saveStoredContextState(wsHome, "fresh", []manifest.RepoInfo{{Name: "repo-a"}}, nil))
+
+	_, err = os.Stat(legacyPath)
+	assert.True(t, os.IsNotExist(err), "legacy flat context file should be migrated away")
+
+	newPath := filepath.Join(wsHome, wsStateDir, contextStateFile)
+	_, err = os.Stat(newPath)
+	require.NoError(t, err, "new nested context file should exist after write")
+
+	state, ok, err = loadStoredContextState(wsHome)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "fresh", state.Raw)
 }

@@ -10,8 +10,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const contextFile = ".ws-context"
-const legacyResolvedContextFile = ".ws-context.resolved"
+const (
+	// Legacy flat paths kept for read-only fallback; new state lives under .ws/.
+	legacyContextFile         = ".ws-context"
+	legacyResolvedContextFile = ".ws-context.resolved"
+
+	contextStateFile = "context.yml"
+)
 
 type contextState struct {
 	Raw      string   `yaml:"raw"`
@@ -23,15 +28,15 @@ type contextState struct {
 }
 
 func loadStoredContextState(wsHome string) (contextState, bool, error) {
-	return readContextState(contextStatePath(wsHome))
+	return readContextState(stateReadPath(wsHome, contextStateFile, legacyContextFile))
 }
 
 func saveStoredContextState(wsHome, raw string, repos []manifest.RepoInfo, previous *string) error {
-	return writeContextState(contextStatePath(wsHome), raw, repos, previous)
-}
-
-func contextStatePath(wsHome string) string {
-	return filepath.Join(wsHome, contextFile)
+	path, err := stateWritePath(wsHome, contextStateFile, legacyContextFile)
+	if err != nil {
+		return err
+	}
+	return writeContextState(path, raw, repos, previous)
 }
 
 func readContextState(path string) (contextState, bool, error) {

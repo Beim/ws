@@ -1,5 +1,5 @@
 .scope/
 repos/
 *.code-workspace
-.ws-context
+.ws/
 manifest.local.yml

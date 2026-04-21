@@ -53,7 +53,7 @@ func injectTestDefaults(yaml string) string {
 func readStoredContext(t *testing.T, wsHome string) contextState {
 	t.Helper()
 
-	data, err := os.ReadFile(filepath.Join(wsHome, contextFile))
+	data, err := os.ReadFile(stateReadPath(wsHome, contextStateFile, legacyContextFile))
 	require.NoError(t, err)
 
 	var state contextState

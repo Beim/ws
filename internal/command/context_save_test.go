@@ -26,7 +26,7 @@ repos:
 
 	m, err := manifest.Load(filepath.Join(wsHome, "manifest.yml"))
 	require.NoError(t, err)
-	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "repo-a,repo-b", []manifest.RepoInfo{
+	require.NoError(t, saveStoredContextState(wsHome, "repo-a,repo-b", []manifest.RepoInfo{
 		{Name: "repo-a"},
 		{Name: "repo-b"},
 	}, nil))
@@ -52,7 +52,7 @@ repos:
 
 	m, err := manifest.Load(filepath.Join(wsHome, "manifest.yml"))
 	require.NoError(t, err)
-	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "repo-a,repo-b", []manifest.RepoInfo{
+	require.NoError(t, saveStoredContextState(wsHome, "repo-a,repo-b", []manifest.RepoInfo{
 		{Name: "repo-a"},
 		{Name: "repo-b"},
 	}, nil))
@@ -87,7 +87,7 @@ repos:
 
 	m, err := manifest.Load(manifestPath)
 	require.NoError(t, err)
-	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "repo-a,repo-b", []manifest.RepoInfo{
+	require.NoError(t, saveStoredContextState(wsHome, "repo-a,repo-b", []manifest.RepoInfo{
 		{Name: "repo-a"},
 		{Name: "repo-b"},
 	}, nil))
@@ -129,7 +129,7 @@ repos:
 
 	m, err := manifest.Load(filepath.Join(wsHome, "manifest.yml"))
 	require.NoError(t, err)
-	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "repo@repo-feature,repo", []manifest.RepoInfo{
+	require.NoError(t, saveStoredContextState(wsHome, "repo@repo-feature,repo", []manifest.RepoInfo{
 		{Name: "repo@repo-feature", Worktree: "repo-feature"},
 		{Name: "repo"},
 	}, nil))
@@ -153,7 +153,7 @@ repos:
 
 	m, err := manifest.Load(filepath.Join(wsHome, "manifest.yml"))
 	require.NoError(t, err)
-	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "repo@feature,repo", []manifest.RepoInfo{
+	require.NoError(t, saveStoredContextState(wsHome, "repo@feature,repo", []manifest.RepoInfo{
 		{Name: "repo@feature", Worktree: "feature"},
 		{Name: "repo"},
 	}, nil))
@@ -177,7 +177,7 @@ repos:
 repos:
   local-repo:
 `)
-	require.NoError(t, writeContextState(filepath.Join(wsHome, contextFile), "local-repo", []manifest.RepoInfo{
+	require.NoError(t, saveStoredContextState(wsHome, "local-repo", []manifest.RepoInfo{
 		{Name: "local-repo"},
 	}, nil))
 

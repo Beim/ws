@@ -12,19 +12,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const agentPinsFile = ".ws-agent-pins"
+const (
+	// Legacy flat path; new state lives at .ws/agent-pins.yml.
+	legacyAgentPinsFile = ".ws-agent-pins"
+
+	agentPinsStateFile = "agent-pins.yml"
+)
 
 type agentPinsState struct {
 	Pins []string `yaml:"pins,omitempty"`
 }
 
-func agentPinsPath(wsHome string) string {
-	return filepath.Join(wsHome, agentPinsFile)
-}
-
 // loadAgentPins returns the set of pinned session IDs for the workspace.
 func loadAgentPins(wsHome string) (map[string]bool, error) {
-	data, err := os.ReadFile(agentPinsPath(wsHome))
+	data, err := os.ReadFile(stateReadPath(wsHome, agentPinsStateFile, legacyAgentPinsFile))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]bool{}, nil
@@ -37,7 +38,7 @@ func loadAgentPins(wsHome string) (map[string]bool, error) {
 	}
 	set := make(map[string]bool, len(state.Pins))
 	for _, id := range state.Pins {
-		if id = strings.TrimSpace(id); id != "" {
+		if id != "" {
 			set[id] = true
 		}
 	}
@@ -51,8 +52,13 @@ func saveAgentPins(wsHome string, pins map[string]bool) error {
 	}
 	sort.Strings(ids)
 
+	path, err := stateWritePath(wsHome, agentPinsStateFile, legacyAgentPinsFile)
+	if err != nil {
+		return err
+	}
+
 	if len(ids) == 0 {
-		if err := os.Remove(agentPinsPath(wsHome)); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		return nil
@@ -62,7 +68,7 @@ func saveAgentPins(wsHome string, pins map[string]bool) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(agentPinsPath(wsHome), data, 0644)
+	return os.WriteFile(path, data, 0644)
 }
 
 // addAgentPin returns true if the ID was newly added (false if already pinned).
@@ -110,11 +116,8 @@ func detectCurrentAgentSession() (string, bool) {
 		if sid, ok := pidToSession[pid]; ok {
 			return sid, true
 		}
-		ppid, err := readParentPID(pid)
-		if err != nil {
-			return "", false
-		}
-		if ppid == pid {
+		ppid, ok := readParentPID(pid)
+		if !ok || ppid == pid {
 			return "", false
 		}
 		pid = ppid
@@ -148,18 +151,19 @@ func buildClaudePidIndex(sessionsDir string) map[int]string {
 	return index
 }
 
-func readParentPID(pid int) (int, error) {
+func readParentPID(pid int) (int, bool) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
 	if err != nil {
-		return 0, err
+		return 0, false
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.HasPrefix(line, "PPid:") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {
-				return strconv.Atoi(fields[1])
+				ppid, err := strconv.Atoi(fields[1])
+				return ppid, err == nil
 			}
 		}
 	}
-	return 0, fmt.Errorf("no PPid entry for pid %d", pid)
+	return 0, false
 }
